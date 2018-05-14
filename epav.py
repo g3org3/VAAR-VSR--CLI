@@ -1,3 +1,7 @@
+# -*- coding: latin-1 -*-
+import numpy as np
+from pyfancy import *
+
 """---------------
     GET CPS
 ---------------"""
@@ -114,10 +118,45 @@ def func_chains(forwarding_paths, cpsItems):
         })
     return matrixList
 
+
+"""------------------
+    Has a Loop: found any 1s in the diagonal?
+------------------"""
+def hasLoop(matrix):
+    return len(filter(lambda x: x is not 0, matrix.diagonal().tolist()[0])) > 0
+
+
+"""------------------
+    Get Position of Negative
+------------------"""
+def getPosOfNegative(cpsItems, matrix):
+    _matrix = matrix.tolist()
+    names = map(lambda x: x[0], cpsItems)
+    str = "  |> Found connexion problem"
+    for x in range(0, len(_matrix)):
+        for y in range(0, len(_matrix)):
+            if _matrix[x][y] == -1:
+                str += "\n    • " + names[x] + " -x-> " + names[y]
+    return str
+
+
+"""------------------
+    Nodes Involved
+------------------"""
+def nodesInvolved(cpsItems, matrix):
+    _matrix = matrix.tolist()
+    _names = []
+    names = map(lambda x: x[0], cpsItems)
+    for x in range(0, len(_matrix)):
+        if _matrix[x][x] is not 0:
+            _names.append(names[x])
+    return _names
+
+
 """------------------
     Find Loop
 ------------------"""
-def findLoop(self, connectivity, cpsItems, obj, args):
+def findLoop(connectivity, cpsItems, obj, args):
     matrix = obj['matrix']
     total_cps = obj['total_cps']
     name = obj['name']
@@ -125,7 +164,7 @@ def findLoop(self, connectivity, cpsItems, obj, args):
     n = total_cps
     if args.verbose or args.diff:
         pyfancy("\n   -->  ").underlined(name +":").output()
-        self.printMatrix(cpsItems, m)
+        debugMatrix("", args.verbose or args.diff, cpsItems, m)
     difference = np.matrix(connectivity) - m
     bugs = []
     if args.diff:
@@ -133,17 +172,17 @@ def findLoop(self, connectivity, cpsItems, obj, args):
             pyfancy().yellow("\n\tConnexion problem detected").output()
         else:
             pyfancy().dim("diff->").output()
-        self.printMatrix(cpsItems, difference)
+        debugMatrix("", args.diff, cpsItems, difference)
     if difference.min() == -1:
-        bugs.append(self.getPosOfNegative(cpsItems, difference))
+        bugs.append(getPosOfNegative(cpsItems, difference))
     for x in range(1, n + 1):
         matrixToPower = m**x
-        if (self.hasLoop(matrixToPower)):
-            cpsInvolved = ", ".join(self.nodesInvolved(cpsItems, matrixToPower))
+        if (hasLoop(matrixToPower)):
+            cpsInvolved = ", ".join(nodesInvolved(cpsItems, matrixToPower))
             bugs.append("  |> Found loop!\n    • Length: " + str(x) + "\n    •    CPs: " + cpsInvolved)
             if args.verbose:
                 pyfancy().yellow("\n\tLoop detected in the matrix below: ^("+str(x)+")").output()
-                self.printMatrix(cpsItems, matrixToPower)
+                debugMatrix("", args.verbose, cpsItems, matrixToPower)
             break
     if not args.verbose and not args.diff:
         if len(bugs) is not 0:
