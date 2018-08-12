@@ -1,0 +1,158 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+node_types:
+  # tosca.nodes.K8s.Container:
+  tosca.nodes.ETSO.K8s.Container:
+    # derived_from: tosca.nodes.Root
+    derived_from: tosca.nodes.Container.Application.Docker
+    properties:
+      #TEST#
+      args:
+        required: false
+        type: list
+        entry_schema:
+          type: string
+      command:
+        required: false
+        type: list
+        entry_schema:
+          type: string
+      env: #Add entry_schema of V1EnvVar
+        required: false
+        type: list
+      env_from: #Add entry_schema of V1EnvVar
+        required: false
+        type: list
+      image:
+        required: false
+        type: string
+      image_pull_policy:
+        required: false
+        type: string
+        default: "IfNotPresent"
+        constraints:
+          - valid_values: ["Always","Never","IfNotPresent"]
+      lifecycle: #Change type from string to V1Lifecycle
+        required: false
+        type: string
+      liveness_probe: #Change type from string to V1Probe
+        required: false
+        type: string
+      name:
+        required: true
+        type: string
+      ports:
+        required: false
+        type: string
+      readiness_probe: #Change type from string to V1Probe
+        required: false
+        type: string
+      resources: #Change type from string to V1ResourceRequirements
+        required: false
+        type: string
+      security_context: #Change type from string to V1SecurityContext
+        required: false
+        type: string
+      stdin:
+        type: boolean
+        required: false
+        default: false
+      stdin_once:
+        type: boolean
+        required: false
+        default: false
+      termination_message_path:
+        required: false
+        type: string
+      termination_message_policy:
+        required: false
+        type: string
+      tty:
+        type: boolean
+        required: false
+        default: false
+      volume_devices: #Add entry_schema of V1VolumeDevice
+        required: false
+        type: list
+      volume_mounts: #Add entry_schema of V1VolumeDevice
+        required: false
+        type: list
+      working_dir:
+        required: false
+        type: string
+      # Additional properties
+      #for testing
+      port:
+        required: false
+        type: integer
+      replicas:
+        required: false
+        type: integer
+      #for testing
+      service_type:
+        required: false
+        type: string
+        constraints:
+          - valid_values: [ "NodePort","LoadBalancer","ClusterIP" ]
+        default: "ClusterIP"
+      node_port:
+        description: The port on each node on which this service is exposed when type=NodePort or LoadBalancer
+        required: false
+        type: integer
+      cluster_ip:
+        required: false
+        type: string
+      labels:
+        required: false
+        type: list
+      #TESTT#
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+    # interfaces:
+    # attributes: 
+    # artifacts:
+    requirements:
+      - dependency:
+          capability: tosca.capabilities.Node
+          occurrences: [0, UNBOUNDED]
+          node: tosker.nodes.Root
+          relationship: tosca.relationships.DependsOn
+      - host:
+          capability: tosca.capabilities.Container
+          node: tosca.nodes.Compute
+          relationship: tosca.relationships.HostedOn
+      - connection:
+          capability: tosca.capabilities.Endpoint
+          occurrences: [0, UNBOUNDED]
+          node: tosker.nodes.Root
+          relationship: tosca.relationships.ConnectsTo
+      - local_storage:
+          capability: tosca.capabilities.Attachment
+          node: tosca.nodes.BlockStorage
+          relationship: tosca.relationships.AttachesTo
+          occurrences: [0, UNBOUNDED]
+      - application:
+          capability: tosca.capabilities.Endpoint
+          relationship: tosca.relationships.RoutesTo
+          occurrences: [0, UNBOUNDED]
+          description: Connection to one or more load balanced applications
+      - link: #copy from tosca.nodes.network.Port
+          capability: tosca.capabilities.network.Linkable
+          relationship: tosca.relationships.network.LinksTo
+          node: tosca.nodes.network.Port
+      - binding:
+          description: >
+            Binding requirement expresses the relationship between Port and
+            Compute nodes. Effectively it indicates that the Port will be
+            attached to specific Compute node instance
+          capability: tosca.capabilities.network.Bindable
+          relationship: tosca.relationships.network.BindsTo
+          node: tosca.nodes.Compute
+      - link:
+          description: >
+            Link requirement expresses the relationship between Port and Network
+            nodes. It indicates which network this port will connect to.
+          capability: tosca.capabilities.network.Linkable
+          relationship: tosca.relationships.network.LinksTo
+          node: tosca.nodes.network.Network

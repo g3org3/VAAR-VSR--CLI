@@ -1,0 +1,51 @@
+node_types:
+  openbaton.type.VNF:
+    properties:
+      vendor:
+        type: string
+        required: false
+      version:
+        type: string
+        required: false
+      endpoint:
+        type: string
+        required: false
+      vnfPackageLocation:
+        type: string
+        required: false
+      type:
+        type: string
+        required: false
+      deploymentFlavour:
+        type: list
+        required: false
+      configurations:
+        type: {}
+        required: false
+    # interfaces:
+    #   type: {}
+  # tosca.nodes.nfv.VDU:
+  #   properties:
+  #     scale_in_out:
+  #       type: int
+  #     vim_instance_name:
+  #       type: list
+  #   artifacts:
+  #     type: {}
+  # tosca.nodes.nfv.CP:
+  #   properties:
+  #     floatingIP:
+  #       type: string
+  #   requirements:
+  #     type: list
+  # tosca.nodes.nfv.VL:
+  #   properties:
+  #     vendor:
+  #       type: string
+  # tosca.nodes.relationships.ConnectsTo:
+  #   source:
+  #     type: string
+  #   target:
+  #     type: string
+  #   parameters:
+  #     type: list
