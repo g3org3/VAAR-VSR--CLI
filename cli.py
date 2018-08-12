@@ -2,12 +2,16 @@
 import argparse
 import os
 import sys
+import time
+import json
 
 from toscaparser.tosca_template import ToscaTemplate
 from toscaparser.common.exception import TOSCAException
 from toscaparser.utils.gettextutils import _
 import toscaparser.utils.urlutils
-import epav
+from lib import epav
+from lib import comb
+from pyfancy import *
 
 
 class ParserShell(object):
@@ -67,22 +71,91 @@ class ParserShell(object):
     tosca = None
     try:
       tosca = ToscaTemplate(path, None, a_file)
+      epav.playground(tosca)
     except:
       print("⚠️ tosca-parser: Could not parse the given file.")
-      if args.verbose:
-        print("Unexpected error: " + str(sys.exc_info()[1]) + "\n")
+      print(sys.exc_info())
+      # if args.verbose:
+      #   print("Unexpected error: " + str(sys.exc_info()[1]) + "\n")
       exit(1)
 
+    configFile = file('./config')
+    apiOutput = {
+      'FPIssues': {},
+      'sat': False,
+      'suggestions': []
+    }
+    config = {}
+    # import config
+    for line in configFile:
+      if line[0] is ";" or line[0] is "#" or line[0] is "//":
+        continue
+      key = line.strip().split("=")[0]
+      val = line.strip().split("=")[1]
+      config[key] = val
+
+    config["start_time"] = time.time()
+    """
+    :: User Connectivity ::
+    """
     (cpsItems, cpsDict) = epav.getCPS(tosca)
     connectivity = epav.getConnectivityGraph(cpsItems, cpsDict)
     epav.debugMatrix("\nconnectivity\n", (args.verbose or args.diff), cpsItems, connectivity)
 
-    if args.verbose or args.diff:
-      print("\nNFS:")
+    """
+    :: NFS ::
+    """
     forwarding_paths = epav.getForwardingPaths(tosca)
     matrixList = epav.func_chains(forwarding_paths, cpsItems)
-    map(lambda x: epav.findLoop(connectivity, cpsItems, x, args), matrixList)
+    matrixBugs = map(lambda x: epav.findLoop(connectivity, cpsItems, x, args), matrixList)
+    
+    if not bool(config['apiOutput']):
+      pyfancy().underlined("\n\nNFS").output()
+    epav.debugBugMatrix(matrixBugs, config, apiOutput)
 
+    nfs_time = time.time() - config["start_time"]
+    # print("\n[time]: "+ str(nfs_time))
+
+    """
+    :: USER Rules ::
+    """
+    try:
+      open('./user.smt').close()
+    except:
+      if not bool(config['apiOutput']):
+        pyfancy().underlined("\nUser Rules").output()
+        print("No custom rules detected")
+      return
+
+    MainData = epav.prepareOutputForZ3(tosca)
+    (s, status) = epav.solve()
+    
+    apiOutput['sat'] = status
+
+    first_solution_time = time.time() - config["start_time"]
+    if not bool(config['apiOutput']):
+      print("\n[time][isSat?]: "+ str(first_solution_time))
+
+    if not bool(config['apiOutput']):
+      pyfancy().underlined("\nUser Rules").output()
+      print("  ✅ sat" if status is "sat" else "  ⚠️ unsat")
+    
+    if status is "unsat":
+      if (args.verbose or args.diff):
+        print "  N =", MainData["variables"]["total"]
+      apiOutput['totalVariables'] = MainData["variables"]["total"]
+      epav.findSolution(tosca, MainData, comb, config, apiOutput)
+      if not bool(config['apiOutput']):
+        print apiOutput['quitReason']['output']
+    elapsed_time = time.time() - config["start_time"]
+    apiOutput['time'] = elapsed_time
+    if not bool(config['apiOutput']):
+      print("[time]  : "+ str(elapsed_time))
+    
+    if bool(config['apiOutput']):
+      print json.dumps(apiOutput, indent=2, separators=(',', ': '))
+    with open('./output/output.json', 'w') as fp:
+      json.dump(apiOutput, fp)
 
 def main(args=None):
   if args is None:
