@@ -1,0 +1,17 @@
+$ python cli.py
+
+NFS
+
+✅  Forwarding_path2
+✅  Forwarding_path1
+
+User Rules
+  unsat
+  N = 15
+
+If you make these 5 changes your configuration request will pass
+    - VM1 > props_vm2 > mem_size to (509 MB)
+    - VNF3 > props_vnf2 > address to (10.100.0.103)
+    - VM3 > props_vm3 > mem_size to (509 MB)
+    - VNF2 > props_vnf1 > address to (10.100.0.101)
+    - VM2 > props_vm1 > mem_size to (509 MB)

@@ -1,0 +1,123 @@
+;;------------------------
+;;  VMS Setup
+;;------------------------
+(declare-const vms (Array Int (Array String Int)))
+(declare-const props_vm1 (Array String Int))
+(declare-const props_vm2 (Array String Int))
+(declare-const props_vm3 (Array String Int))
+
+(declare-const vms_size Int)
+(assert (= vms_size 3))
+;;------ Done VMS Setup ------
+
+;;------------------------
+;;  VMS Insert Values From Conf
+;;------------------------
+;; vm-name: VM2
+(assert (= (store props_vm1 "mem_size" 512000000) props_vm1));; var.id: 0
+(assert (= (store props_vm1 "num_cpus" 2) props_vm1));; var.id: 1
+(assert (= (store props_vm1 "disk_size" 10000000000) props_vm1));; var.id: 2
+(assert (= (store vms 0 props_vm1) vms))
+
+;; vm-name: VM1
+(assert (= (store props_vm2 "mem_size" 900000000) props_vm2));; var.id: 3
+(assert (= (store props_vm2 "num_cpus" 2) props_vm2));; var.id: 4
+(assert (= (store props_vm2 "disk_size" 10000000000) props_vm2));; var.id: 5
+(assert (= (store vms 1 props_vm2) vms))
+
+;; vm-name: VM3
+(assert (= (store props_vm3 "mem_size" 512000000) props_vm3));; var.id: 6
+(assert (= (store props_vm3 "num_cpus" 2) props_vm3));; var.id: 7
+(assert (= (store props_vm3 "disk_size" 10000000000) props_vm3));; var.id: 8
+(assert (= (store vms 2 props_vm3) vms))
+
+;;------ Done VMS Values ------
+
+;;------------------------
+;;  VNFS Setup
+;;------------------------
+(declare-const vnfs (Array Int (Array String Int)))
+(declare-const props_vnf1 (Array String Int))
+(declare-const props_vnf2 (Array String Int))
+(declare-const props_vnf3 (Array String Int))
+
+(declare-const vnfs_size Int)
+(assert (= vnfs_size 3))
+;;------ Done VNFS Setup ------
+
+;;------------------------
+;;  VNFS Insert Values From Conf
+;;------------------------
+;; vnf-name: VNF2
+(assert (= (store props_vnf1 "address" 174325866) props_vnf1));; var.id: 9
+(assert (= (store props_vnf1 "type" 72968465412643198173021882066321561051) props_vnf1));; var.id: 10
+(assert (= (store props_vnf1 "nsh_aware" 1) props_vnf1));; var.id: 11
+(assert (= (store props_vnf1 "port" 40000) props_vnf1));; var.id: 12
+(assert (= (store vnfs 0 props_vnf1) vnfs))
+
+(assert (= (store props_vnf1 "version" 1) props_vnf1));; var.id: 13
+(assert (= (store props_vnf1 "vendor" 102235257589293171193421932530596353520) props_vnf1));; var.id: 14
+(assert (= (store props_vnf1 "id" 24871174722580436726483444206106269102) props_vnf1));; var.id: 15
+(assert (= (store vnfs 0 props_vnf1) vnfs))
+
+;; vnf-name: VNF3
+(assert (= (store props_vnf2 "address" 174325867) props_vnf2));; var.id: 16
+(assert (= (store props_vnf2 "type" 87761256354448596868904634466949752606) props_vnf2));; var.id: 17
+(assert (= (store props_vnf2 "nsh_aware" 1) props_vnf2));; var.id: 18
+(assert (= (store props_vnf2 "port" 40000) props_vnf2));; var.id: 19
+(assert (= (store vnfs 1 props_vnf2) vnfs))
+
+(assert (= (store props_vnf2 "version" 1) props_vnf2));; var.id: 20
+(assert (= (store props_vnf2 "vendor" 102235257589293171193421932530596353520) props_vnf2));; var.id: 21
+(assert (= (store props_vnf2 "id" 24871174722580436726483444206106269102) props_vnf2));; var.id: 22
+(assert (= (store vnfs 1 props_vnf2) vnfs))
+
+;; vnf-name: VNF1
+(assert (= (store props_vnf3 "address" 174325865) props_vnf3));; var.id: 23
+(assert (= (store props_vnf3 "type" 222052008016964798883863507062378407420) props_vnf3));; var.id: 24
+(assert (= (store props_vnf3 "nsh_aware" 1) props_vnf3));; var.id: 25
+(assert (= (store props_vnf3 "port" 40000) props_vnf3));; var.id: 26
+(assert (= (store props_vnf3 "version" 1) props_vnf3));; var.id: 27
+(assert (= (store props_vnf3 "vendor" 102235257589293171193421932530596353520) props_vnf3));; var.id: 28
+(assert (= (store props_vnf3 "id" 24871174722580436726483444206106269102) props_vnf3));; var.id: 29
+(assert (= (store vnfs 2 props_vnf3) vnfs))
+
+;;------ Done VNFS Values ------
+
+
+
+;;------------------------
+;;  USER Rules
+;;------------------------
+;;for vm_i in vms | size: 3
+(assert (forall ((x Int))
+  (=>
+    (and (< x vms_size) (> x -1))
+    (and
+      (< (select (select vms x) "mem_size") 500000000)
+      (and
+        (> (select (select vms x) "num_cpus") 0)
+        (< (select (select vms x) "num_cpus") 6)
+      )
+    )
+  )
+))
+
+;;for vnf_i in vnfs | size: 3
+(assert (forall ((x Int))
+  (=>
+    (and (< x vnfs_size) (> x -1))
+    (and
+      (<
+        (select (select vnfs x) "address")
+        174325866
+      )
+      (> (select (select vnfs x) "address")
+        174325860
+      )
+    )
+  )
+))
+
+;;------ Done USER Rules ------
+
