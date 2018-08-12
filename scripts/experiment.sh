@@ -1,6 +1,6 @@
 
 RULES=`ls rules`
-cli='./bin/docker-run.sh'
+cli='./bin/run.sh'
 
 for rule in $RULES; do
   $cli example/tosca-conf.yml rules/$rule > /dev/null
