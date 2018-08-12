@@ -1,0 +1,4 @@
+*.pyc
+*.zip
+experiments/*.json
+experiments/*.smt2
