@@ -1,0 +1,70 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+description: Sample VNFD template mentioning possible values for each node.
+metadata:
+ template_name: sample-tosca-vnfd-template-guide
+topology_template:
+ node_templates:
+   VDU:
+     type: tosca.nodes.nfv.VDU.Tacker
+     capabilities:
+       nfv_compute:
+         properties:
+           mem_page_size: [small, large, any, custom]
+           cpu_allocation:
+             cpu_affinity: [shared, dedicated]
+             thread_allocation: [avoid, separate, isolate, prefer]
+             socket_count: any integer
+             core_count: any integer
+             thread_count: any integer
+           numa_node_count: any integer
+           numa_nodes:
+             node0: [ id: >=0, vcpus: [host CPU numbers], mem_size: >= 0MB]
+     properties:
+       image: Image to be used in VM
+       flavor: Nova supported flavors
+       availability_zone: available availability zone
+       mem_size: in MB
+       disk_size: in GB
+       num_cpus: any integer
+       metadata:
+         entry_schema:
+       config_drive: [true, false]
+       monitoring_policy:
+         name: [ping, noop, http-ping]
+         parameters:
+           monitoring_delay: delay time
+           count: any integer
+           interval: time to wait between monitoring
+           timeout: monitoring timeout time
+           actions:
+             [failure: respawn, failure: terminate, failure: log]
+           retry: Number of retries
+           port: specific port number if any
+       config: Configuring the VDU as per the network function requirements
+       mgmt_driver: [default=noop]
+       service_type: type of network service to be done by VDU
+       user_data: custom commands to be executed on VDU
+       user_data_format: format of the commands
+       key_name: user key
+     artifacts:
+       VNFImage:
+         type: tosca.artifacts.Deployment.Image.VM
+         file: file to be used for image
+   CP:
+     type: tosca.nodes.nfv.CP.Tacker
+     properties:
+       management: [true, false]
+       anti_spoofing_protection: [true, false]
+       type: [ sriov, vnic ]
+       order: order of CP within a VDU
+       security_groups: list of security groups
+     requirements:
+       - virtualLink:
+          node: VL to link to
+       - virtualBinding:
+          node: VDU to bind to
+   VL:
+     type: tosca.nodes.nfv.VL
+     properties:
+       network_name: name of network to attach to
+       vendor: Tacker

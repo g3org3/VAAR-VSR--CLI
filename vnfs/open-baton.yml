@@ -1,0 +1,105 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0
+
+description: Example of NSD
+imports:
+  - custom_types/open-baton-types.yaml
+metadata:
+  ID: dummy-NS
+  vendor: Fokus
+  version: 0.1
+
+topology_template:
+  node_templates:
+    dummy-server:
+      type: openbaton.type.VNF
+      properties:
+        vendor: Fokus
+        version: 0.1
+        endpoint: dummy
+        type: server
+        configurations:
+          name: server-configurations
+        configurationParameters:
+          - key: value
+          - key2: value2
+        vnfPackageLocation: https://github.com/openbaton/vnf-scripts.git
+        deploymentFlavour:
+          - flavour_key: m1.small
+      requirements:
+        - vdu: VDU1
+      interfaces:
+        lifecycle:
+          INSTANTIATE:
+            - install.sh
+            - install-srv.sh
+
+    dummy-client:
+      type: openbaton.type.VNF
+      properties:
+        ID: x
+        vendor: Fokus
+        version: 0.1
+        type: client
+        vnfPackageLocation: https://github.com/openbaton/vnf-scripts.git
+        deploymentFlavour:
+          - flavour_key: m1.small
+        endpoint: dummy
+      requirements:
+        - vdu: VDU2
+      interfaces:
+        lifecycle: # lifecycle
+          INSTANTIATE:
+            - install.sh
+          CONFIGURE:
+            - server_start-clt.sh
+
+    VDU1:
+      type: tosca.nodes.nfv.VDU
+      properties:
+        scale_in_out: 1
+        vim_instance_name:
+          - test-vim-instance
+      artifacts:
+        VDU1Image:
+          type: tosca.artifacts.Deployment.Image.VM
+          file: ubuntu-14.04-server-cloudimg-amd64-disk1
+
+    VDU2:
+      type: tosca.nodes.nfv.VDU
+      properties:
+        scale_in_out: 2
+        vim_instance_name:
+          - test-vim-instance
+      requirements:
+        - virtual_link: CP2
+      artifacts:
+        VDU1Image:
+          type: tosca.artifacts.Deployment.Image.VM
+          file: ubuntu-14.04-server-cloudimg-amd64-disk1
+
+    CP1:
+      type: tosca.nodes.nfv.CP
+      properties:
+        floatingIP: random
+      requirements:
+        - virtualBinding: VDU1
+        - virtualLink: private
+
+    CP2: #endpoints of VNF2
+      type: tosca.nodes.nfv.CP
+      requirements:
+        - virtualBinding: VDU2
+        - virtualLink: private
+
+    private:
+      type: tosca.nodes.nfv.VL
+      properties:
+        vendor: Fokus
+
+relationships_template:
+  connection_server_client:
+    type: tosca.nodes.relationships.ConnectsTo
+    source: dummy-server
+    target: dummy-client
+    parameters:
+      - private

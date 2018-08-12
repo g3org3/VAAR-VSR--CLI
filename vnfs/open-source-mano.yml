@@ -1,0 +1,24 @@
+vnfd:vnfd:
+-   vnfd:connection-point:
+    -   vnfd:name: cp1
+        vnfd:type: VPORT
+    vnfd:description: A simple VNF descriptor w/ one VDU
+    vnfd:id: d6c25720-895a-40a2-b303-b2a98d10674c
+    vnfd:name: Ref_Vnf_21
+    vnfd:short-name: Ref_Vnf_21
+    vnfd:vdu:
+    -   vnfd:external-interface:
+        -   vnfd:name: eth0
+            vnfd:virtual-interface:
+                vnfd:type: VIRTIO
+            vnfd:vnfd-connection-point-ref: cp1
+        vnfd:id: abd6831e-f811-4580-9aad-1de9c6424180
+        vnfd:image: ref_vm21.qcow2
+        vnfd:name: Ref_VM5
+        vnfd:vm-flavor:
+            vnfd:memory-mb: '1024'
+            vnfd:storage-gb: '16'
+            vnfd:vcpu-count: '1'
+    vnfd:vendor: ETSI
+    vnfd:version: '1.0'
+
