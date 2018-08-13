@@ -8,7 +8,6 @@ from pyfancy import *
 from functools import reduce
 
 OUTPUT_PATH = './output/ouput.smt2'
-USER_RULES_PATH = './user.smt'
 
 def compose(*functions):
     def compose2(f, g):
@@ -574,7 +573,7 @@ def getAttributesFromUserRules(rawRules):
 """------------------
   Prepare output for z3
 ------------------"""
-def prepareOutputForZ3(tosca, ids = []):
+def prepareOutputForZ3(tosca, USER_RULES_PATH, ids = []):
   output = open(OUTPUT_PATH, mode='w')
   userRawRules = open(USER_RULES_PATH).read()
   MainData = {
@@ -589,6 +588,7 @@ def prepareOutputForZ3(tosca, ids = []):
       "cps": 0,
       "networks": 0,
     },
+    "custom_rules": USER_RULES_PATH,
     "optimized": True,
     "skipIDs": ids,
     "stringsHashMap": {},
@@ -620,6 +620,7 @@ def solve():
 def findSolution(tosca, MainData, comb, config, apiOutput):
   _variables_total = MainData["variables"]["total"]
   _variables_names = MainData["variables"]["names"]
+  user_path_custom_rules = MainData["custom_rules"]
   quit = False
   quitReason = "unkown"
   solutionsFound = 0
@@ -650,7 +651,7 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
           apiOutput['quitReason'] = { "output": quitReason, "reason": "Timeout", "data": time.time() }
           quit = True
           break
-        prepareOutputForZ3(tosca, ids)
+        prepareOutputForZ3(tosca, user_path_custom_rules, ids)
         (s, status) = solve()
         if status is "sat":
           # print(s.model())

@@ -2,3 +2,5 @@
 *.zip
 experiments/*.json
 experiments/*.smt2
+output/*.json
+output/*.smt2

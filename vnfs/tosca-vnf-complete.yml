@@ -1,7 +1,8 @@
 tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
 
 description: Template for deploying a single server with predefined properties.
-
+imports:
+  - custom_types/tosca-vnfs.yaml
 metadata:
   template_name: TOSCA NFV Sample Template
 
@@ -20,14 +21,13 @@ topology_template:
       type: tosca.nodes.nfv.VDU
       capabilities:
         host:
-         properties:
-           num_cpus: 2
-           disk_size: 11 GB
-           mem_size: 900 MB
+          properties:
+            num_cpus: 2
+            disk_size: 11 GB
+            mem_size: 900 MB
         os:
           properties:
             architecture: x86_64
-            type: sfc_client
             distribution: ubuntu
             version: 14.04
 

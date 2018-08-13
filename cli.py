@@ -30,6 +30,9 @@ class ParserShell(object):
     parser.add_argument('-c', '--template-file',
                         metavar='<filename>',
                         help=_('YAML template or CSAR file to parse.'))
+    parser.add_argument('-t', '--custom-rules',
+                        metavar='<filename>',
+                        help=_('smt file'))
     return parser
 
   def main(self, argv):
@@ -71,12 +74,13 @@ class ParserShell(object):
     tosca = None
     try:
       tosca = ToscaTemplate(path, None, a_file)
-      epav.playground(tosca)
+      # epav.playground(tosca)
     except:
       print("⚠️ tosca-parser: Could not parse the given file.")
-      print(sys.exc_info())
-      # if args.verbose:
-      #   print("Unexpected error: " + str(sys.exc_info()[1]) + "\n")
+      if args.verbose:
+        print("Unexpected error: ")
+        print(sys.exc_info())
+        print("")
       exit(1)
 
     configFile = file('./config')
@@ -119,15 +123,20 @@ class ParserShell(object):
     """
     :: USER Rules ::
     """
+    user_path_custom_rules = "./user.smt"
     try:
-      open('./user.smt').close()
+      if args.custom_rules:
+        user_path_custom_rules = args.custom_rules
+        open(args.custom_rules).close()
+      else:
+        open('./user.smt').close()
     except:
       if not bool(config['apiOutput']):
         pyfancy().underlined("\nUser Rules").output()
         print("No custom rules detected")
       return
 
-    MainData = epav.prepareOutputForZ3(tosca)
+    MainData = epav.prepareOutputForZ3(tosca, user_path_custom_rules)
     (s, status) = epav.solve()
     
     apiOutput['sat'] = status
