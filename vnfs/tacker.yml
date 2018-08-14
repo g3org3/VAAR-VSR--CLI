@@ -15,7 +15,7 @@ topology_template:
         - host: VDU1
       interfaces:
         Standard:
-            create: install_vnfc.sh
+          create: install_vnfc.sh
 
     VDU1:
       type: tosca.nodes.nfv.VDU.Tacker

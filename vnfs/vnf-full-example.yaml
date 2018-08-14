@@ -1,0 +1,145 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+description: example of a SFC VSR
+
+topology_template:
+  node_templates:
+    VDU1:
+      type: tosca.nodes.nfv.VDU
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            disk_size: 100 GB
+            mem_size: 2GB MB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: Debian
+            version: 9.5
+    VDU2:
+      type: tosca.nodes.nfv.VDU
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            disk_size: 100 GB
+            mem_size: 2GB MB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: Debian
+            version: 9.5
+    VDU3: 
+      type: tosca.nodes.nfv.VDU
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            disk_size: 100 GB
+            mem_size: 2GB MB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: Debian
+            version: 9.5
+    FW:
+      type: tosca.nodes.nfv.VNF
+      properties:
+        id: vnf1
+        vendor: acmetelco
+        version: 1.0
+      attributes:
+        type: firewall
+        nsh_aware: true
+      requirements:
+        - dependency: VDU1
+
+    LB:
+      type: tosca.nodes.nfv.VNF
+      properties:
+        id: vnf1
+        vendor: acmetelco
+        version: 1.0
+      attributes:
+        type: load_balancer
+        nsh_aware: true
+      requirements:
+        - dependency: VDU2
+    
+    NAT:
+      type: tosca.nodes.nfv.VNF
+      properties:
+        id: vnf1
+        vendor: acmetelco
+        version: 1.0
+      attributes:
+        type: network_address_translation
+        nsh_aware: true
+      requirements:
+        - dependency: VDU1
+    VL1:
+      type: tosca.nodes.nfv.VL
+      properties:
+        vendor: HP
+      attributes:
+        type: ip
+        transport_type: vxlan-gpe
+    CP11:
+      type: tosca.nodes.nfv.CP
+      properties:
+      attributes:
+        IP_address: 10.100.0.105
+        interface: ens3
+        port: 30000
+      requirements:
+        - virtualBinding: VDU1
+        - virtualLink: VL1
+    CP21: 
+      type: tosca.nodes.nfv.CP
+      properties:
+      attributes:
+        IP_address: 10.100.0.106
+        interface: ens3
+        port: 30000
+      requirements:
+        - virtualBinding: VDU2
+        - virtualLink: VL1
+    CP31: 
+      type: tosca.nodes.nfv.CP
+      properties:
+      attributes:
+        IP_address: 10.100.0.107
+        interface: ens3
+        port: 30000
+      requirements:
+        - virtualBinding: VDU3
+        - virtualLink: VL1
+    ForwardingPath2:
+      type: tosca.nodes.nfv.FP
+      description: path (CP11->CP21->CP31->CP11)
+      properties:
+        policy: example_policy
+      requirements:
+        - forwarder:
+            capability: CP11
+            relationship: CP21
+        - forwarder:
+            capability: CP21
+            relationship: CP31
+        - forwarder:
+            capability: CP31
+            relationship: CP11
+  groups:
+    VNF_FG1:
+      type: tosca.groups.nfv.VNFFG
+      description: VNF forwarding graph
+      properties:
+        vendor: sample
+        version: idk
+        number_of_endpoints: 2
+        dependent_virtual_link: [VL1]
+        connection_poit: [CP11, CP21, CP31]
+        constituent_vnfs: [FW, NAT, LB]
