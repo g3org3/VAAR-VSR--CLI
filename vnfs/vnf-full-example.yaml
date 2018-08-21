@@ -10,7 +10,7 @@ topology_template:
           properties:
             num_cpus: 2
             disk_size: 100 GB
-            mem_size: 2GB MB
+            mem_size: 2GB
         os:
           properties:
             architecture: x86_64
@@ -24,7 +24,7 @@ topology_template:
           properties:
             num_cpus: 2
             disk_size: 100 GB
-            mem_size: 2GB MB
+            mem_size: 2GB
         os:
           properties:
             architecture: x86_64
@@ -38,7 +38,7 @@ topology_template:
           properties:
             num_cpus: 2
             disk_size: 100 GB
-            mem_size: 2GB MB
+            mem_size: 2GB
         os:
           properties:
             architecture: x86_64
