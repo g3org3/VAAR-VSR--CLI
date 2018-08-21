@@ -4,6 +4,7 @@ import re
 import z3
 import time
 import md5
+import json
 from pyfancy import *
 from functools import reduce
 
@@ -35,23 +36,20 @@ def dec2Bin(num):
   return str(total) + " " + sym
 
 def bin2Dec(rawBin):
-  if len(str(rawBin).split('.')) is 4:
-    return IP2Int(rawBin)
-  else:
-    rawBin = str(rawBin)
-    if "MB" in rawBin:
-      return str(int(rawBin.split("MB")[0]) * (10**6))
-    if "GB" in rawBin:
-      return str(int(rawBin.split("GB")[0]) * (10**9))
-    if "KB" in rawBin:
-      return str(int(rawBin.split("KB")[0]) * (10**3))
-    if "TB" in rawBin:
-      return str(int(rawBin.split("TB")[0]) * (10**12))
-    if "PB" in rawBin:
-      return str(int(rawBin.split("PB")[0]) * (10**15))
-    if "B" in rawBin:
-      return str(int(rawBin.split("B")[0]))
-    return rawBin
+  rawBin = str(rawBin).upper()
+  if "MB" in rawBin:
+    return str(int(rawBin.split("MB")[0]) * (10**6))
+  if "GB" in rawBin:
+    return str(int(rawBin.split("GB")[0]) * (10**9))
+  if "KB" in rawBin:
+    return str(int(rawBin.split("KB")[0]) * (10**3))
+  if "TB" in rawBin:
+    return str(int(rawBin.split("TB")[0]) * (10**12))
+  if "PB" in rawBin:
+    return str(int(rawBin.split("PB")[0]) * (10**15))
+  if "B" in rawBin:
+    return str(int(rawBin.split("B")[0]))
+  return rawBin
 
 def IP2Int(ip):
   o = map(int, ip.split('.'))
@@ -66,6 +64,15 @@ def Int2IP(ipnum):
   o4 = int(ipnum) % 256
   return '%(o1)s.%(o2)s.%(o3)s.%(o4)s' % locals()
 
+def preProcessor(line, MainData):
+  if preProcessBytes(line):
+    return preProcessBytes(line)
+  elif preProcessIPs(line):
+    return preProcessIPs(line)
+  elif preProcessString(line, MainData):
+    return preProcessString(line, MainData)
+  return line
+
 def preProcessIPs(line):
   try:
     pattern = re.compile(r"([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})")
@@ -75,7 +82,19 @@ def preProcessIPs(line):
     ipNumber = IP2Int(ipRaw)
     return pattern.sub(ipNumber, line)
   except:
-    return line
+    return False
+
+def preProcessString(line, MainData):
+  try:
+    pattern = re.compile(r"\'.+\'")
+    start = pattern.search(line).start()
+    end = pattern.search(line).end()
+    value = line[start+1:end-1]
+    result = str(int(md5.new(value).hexdigest(), 16))
+    MainData["stringsHashMap"][result] = value
+    return pattern.sub(result, line)
+  except:
+    return False
 
 def preProcessBytes(line):
   # detect bytes
@@ -87,7 +106,8 @@ def preProcessBytes(line):
     bytesNumber = bin2Dec(bytesRaw)
     return pattern.sub(bytesNumber, line)
   except:
-    return line
+    return False
+
 def toscaRawValueToSMTCorrectType(attributeName, value, MainData):
   # if is ip
   if len(str(value).split('.')) is 4:
@@ -114,10 +134,22 @@ def toscaRawValueToSMTCorrectType(attributeName, value, MainData):
     # if is float/version
     # if is string
     MainData["valueTypes"][attributeName] = "string"
-    result = int(md5.new(value).hexdigest(), 16)
+    result = str(int(md5.new(value).hexdigest(), 16))
     MainData["stringsHashMap"][result] = value
     return result
-def parseUserRules(rawInput, sizes):
+
+def findCustomTypesInUserRules(rawInput):
+  customTypes = []
+  for line in rawInput.split('\n'):
+    if "deftype" in line:
+      line = line.split(' ')
+      if len(line) is 4:
+        if line[0] == ";;" and line[1] == "deftype":
+          customTypes.append({ "name": line[2], "type": line[3] })
+  return customTypes
+
+def parseUserRules(rawInput, MainData):
+  sizes = MainData["sizes"]
   inside_for = False
   invalid_for = True
   empty_for = False
@@ -128,8 +160,7 @@ def parseUserRules(rawInput, sizes):
   smt2 += ";;  USER Rules\n"
   smt2 += ";;------------------------\n"
   for line in rawInput.split('\n'):
-    line = preProcessBytes(line)
-    line = preProcessIPs(line)
+    line = preProcessor(line, MainData)
     # print line, invalid_for, empty_for, inside_for
     if ";;endfor" in line:
       # print invalid_for
@@ -163,9 +194,9 @@ def parseUserRules(rawInput, sizes):
         smt2 += "    (and (< x " + for_name + "_size) (> x -1))\n"
       else:
         if empty_for:
-          smt2 += ";;Ignore rules, because no " + for_name + " descriptions where found!\n"
+          smt2 += "\n;;Ignore rules, because no " + for_name + " descriptions where found!\n"
         else:
-          smt2 += ";; invalid for, did not match array name: \"" + for_name +"\"\n"
+          smt2 += "\n;; invalid for, did not match array name: \"" + for_name +"\"\n"
         smt2 += line + "\n"
     else:
       smt2 += line
@@ -188,143 +219,6 @@ def parseUserRules(rawInput, sizes):
 )
 ;;endfor
 """
-
-"""---------------
-  GET VNFS
----------------"""
-def getVNFs(tosca, MainData, ToscaFullType):
-  ToscaType = ToscaFullType.split(".").pop()
-  arrayLabel = ToscaType.lower()
-  Title = ToscaType.upper() + "S"
-  arrayName = arrayLabel + "s"
-  
-  if not hasattr(tosca, "nodetemplates"):
-    MainData["blob"] += ";; this tosca conf does not have any nodetemplates"
-    MainData["sizes"][arrayLabel] = 0
-    return MainData
-
-  nodetemplates = tosca.nodetemplates
-  itemsInToscaConf = filter(lambda x: x.type == ToscaFullType, nodetemplates)
-
-  if len(itemsInToscaConf) == 0:
-    smt2  = ";;------------------------\n"
-    smt2 += ";;  " + Title + " Setup: 0, None detected\n"
-    smt2 += ";;------------------------\n"
-    smt2 += "(declare-const " + arrayName + " (Array Int (Array String Int)))\n"
-    smt2 += "(declare-const " + arrayName + "_size Int)\n"
-    smt2 += "(assert (= " + arrayName + "_size 0))\n"
-    
-    MainData["blob"] += smt2
-    MainData["sizes"][arrayLabel] = 0
-    return MainData
-
-
-  smt2  = ";;------------------------\n"
-  smt2 += ";;  " + Title + " Setup\n"
-  smt2 += ";;------------------------\n"
-  smt2 += "(declare-const " + arrayName + " (Array Int (Array String Int)))\n"
-  for i in range(1, len(itemsInToscaConf) + 1):
-    smt2 += "(declare-const props_" + arrayLabel + str(i) + " (Array String Int))\n"
-
-  smt2 += "\n(declare-const " + arrayName + "_size Int)\n"
-  smt2 += "(assert (= " + arrayName + "_size " + str(len(itemsInToscaConf)) +"))\n"
-  smt2 += ";;------ Done " + Title + " Setup ------\n\n"
-
-  smt2 += ";;------------------------\n"
-  smt2 += ";;  " + Title + " Insert Values From Conf\n"
-  smt2 += ";;------------------------\n"
-
-  for i in range(1, len(itemsInToscaConf) + 1):
-    # current object of type
-    vm = itemsInToscaConf[i - 1]
-    smt2 += ";; "+arrayLabel+"-name: " + vm.name + "\n"
-    props_name = "props_" + arrayLabel + str(i)
-    
-    for item in vm.templates:
-      if item is vm.name:
-        for (propName, propValues) in vm.templates[item].items():
-          if type(propValues) is type({}):
-            for (key, val) in propValues.items():
-              if not key in MainData['rules']['attributes'] and MainData['optimized']:
-                continue
-              value = toscaRawValueToSMTCorrectType(key, val, MainData)
-              if MainData["variables"]["total"] not in MainData["skipIDs"]:
-                smt2 += "(assert (= (store "+props_name+" \"" + key +"\" " + bin2Dec(value) +") "+props_name+"))" + ";; var.id: " + str(MainData["variables"]["total"]) +"\n"
-              else:
-                smt2 += ";; (assert (= (store "+props_name+" \"" + key +"\" " + bin2Dec(value) +") "+props_name+"))" + ";; var.id: " + str(MainData["variables"]["total"]) +"\n"
-              MainData["variables"]["total"] += 1
-              MainData["variables"]["names"].append(vm.name + "." + props_name + "." + key)
-          # else: this is actually the type: tosca.nodes.nfv.VNF
-            # print ".items()", propValues
-        smt2 += "(assert (= (store "+arrayName+" "+str(i-1)+" "+props_name+") "+arrayName+"))\n\n"
-        break
-    # print "------>"
-  smt2 += ";;------ Done "+Title +" Values ------\n\n"
-  
-  MainData["blob"] += smt2
-  MainData["sizes"][arrayName] = len(itemsInToscaConf)
-  return MainData
-
-"""---------------
-  GET VMS
----------------"""
-def getVMs(tosca, MainData):
-  if not hasattr(tosca, "nodetemplates"):
-    MainData["blob"] += ";; this tosca conf does not have any nodetemplates"
-    MainData["sizes"]["vms"] = 0
-    return MainData
-
-  nodetemplates = tosca.nodetemplates
-  vms = filter(lambda x: x.type == "tosca.nodes.Compute", nodetemplates)
-
-  if len(vms) == 0:
-    smt2  = ";;------------------------\n"
-    smt2 += ";;  VMS Setup: 0, None detected\n"
-    smt2 += ";;------------------------\n"
-    smt2 += "(declare-const vms (Array Int (Array String Int)))\n"
-    smt2 += "(declare-const vms_size Int)\n"
-    smt2 += "(assert (= vms_size 0))\n"
-    MainData["blob"] += smt2
-    MainData["sizes"]["vms"] = 0
-    return MainData
-
-
-  smt2  = ";;------------------------\n"
-  smt2 += ";;  VMS Setup\n"
-  smt2 += ";;------------------------\n"
-  smt2 += "(declare-const vms (Array Int (Array String Int)))\n"
-  for i in range(1, len(vms) + 1):
-    smt2 += "(declare-const props_vm" + str(i) + " (Array String Int))\n"
-
-  smt2 += "\n(declare-const vms_size Int)\n"
-  smt2 += "(assert (= vms_size " + str(len(vms)) +"))\n"
-  smt2 += ";;------ Done VMS Setup ------\n\n"
-
-  smt2 += ";;------------------------\n"
-  smt2 += ";;  VMS Insert Values From Conf\n"
-  smt2 += ";;------------------------\n"
-
-  for i in range(1, len(vms) + 1):
-    vm = vms[i - 1]
-    smt2 += ";; vm-name: " + vm.name + "\n"
-    props = vm.get_capabilities()['host'].get_properties().items()
-    props_name = "props_vm" + str(i)
-    array_name = "vms"
-    for (key, prop) in props:
-      if not key in MainData['rules']['attributes'] and MainData['optimized']:
-        continue
-      if MainData["variables"]["total"] not in MainData["skipIDs"]:
-        smt2 += "(assert (= (store "+props_name+" \"" + key +"\" " + bin2Dec(prop.value) +") "+props_name+"))" + ";; var.id: " + str(MainData["variables"]["total"]) +"\n"
-      else:
-        smt2 += ";; (assert (= (store "+props_name+" \"" + key +"\" " + bin2Dec(prop.value) +") "+props_name+"))" + ";; var.id: " + str(MainData["variables"]["total"]) +"\n"
-      MainData["variables"]["total"] += 1
-      MainData["variables"]["names"].append(vm.name + "." + props_name + "." + key)
-    smt2 += "(assert (= (store "+array_name+" "+str(i-1)+" "+props_name+") "+array_name+"))\n\n"
-  smt2 += ";;------ Done VMS Values ------\n\n"
-  
-  MainData["blob"] += smt2
-  MainData["sizes"]["vms"] = len(vms)
-  return MainData
 
 
 """---------------
@@ -424,7 +318,7 @@ def func_chains(forwarding_paths, cpsItems):
     total_cps = len(cpsItems)
     for cp in cpsItems:
       matrix.append([0] * total_cps)
-    cps_in_FP = {}
+    cps_in_FP = {}  
     for forwarder in fp["relations"]:
       fromCP = forwarder["capability"]
       toCP = forwarder['relationship']
@@ -494,7 +388,7 @@ def debugBugMatrix(matrixBugs, config, apiOutput):
       else:
         pyfancy().underlined("⚠️  " + name).output()
         for bug in bugs:
-          print bug['output']
+          print(bug.get('ouput'))
     else:
       if bool(config['apiOutput']):
         apiOutput['FPIssues'][name] = []
@@ -547,13 +441,15 @@ def findLoop(connectivity, cpsItems, obj, args):
     #     pyfancy("✅  " + name).output()
   return (name, bugs)
 
-def prettifyValue(dataType, rawValueFromSolver):
+def prettifyValue(dataType, rawValueFromSolver, MainData):
   if dataType is "ip":
     return Int2IP(int(rawValueFromSolver))
   elif dataType is "size":
     return dec2Bin(int(rawValueFromSolver))
   elif dataType is "bool":
     return "true" if int(rawValueFromSolver) is 1 else "false"
+  elif MainData["stringsHashMap"].has_key(rawValueFromSolver):
+    return MainData["stringsHashMap"].get(rawValueFromSolver)
   return rawValueFromSolver
 
 def getAttributesFromUserRules(rawRules):
@@ -586,7 +482,9 @@ def prepareOutputForZ3(tosca, USER_RULES_PATH, ids = []):
       "vms": 0,
       "vnfs": 0,
       "cps": 0,
+      "vdus": 0,
       "networks": 0,
+      # TODO: agregar aqui el nuevo type
     },
     "custom_rules": USER_RULES_PATH,
     "optimized": True,
@@ -595,15 +493,14 @@ def prepareOutputForZ3(tosca, USER_RULES_PATH, ids = []):
     "valueTypes": {},
     "rules": {
       "attributes": getAttributesFromUserRules(userRawRules)
-    }
+    },
+    "customTypes": findCustomTypesInUserRules(userRawRules)
   }
 
-  getVMs(tosca, MainData)
-  getVNFs(tosca, MainData, "tosca.nodes.nfv.VNF")
-  getVNFs(tosca, MainData, "tosca.nodes.Network")
-  getVNFs(tosca, MainData, "tosca.nodes.nfv.CP")
+  nodes = scanAllPropertiesAndGenerateStructure(tosca)
+  prepareOutputForZ3Core(nodes, MainData)
   
-  MainData["blob"] += parseUserRules(userRawRules, MainData["sizes"])
+  MainData["blob"] += parseUserRules(userRawRules, MainData)
   output.write(MainData["blob"])
   output.close()
   return MainData
@@ -622,17 +519,16 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
   _variables_names = MainData["variables"]["names"]
   user_path_custom_rules = MainData["custom_rules"]
   quit = False
-  quitReason = "unkown"
+  quitReason = "unreachable"
   solutionsFound = 0
   maxSolutions = int(config["suggestions"])
-  
+  apiOutput['quitReason'] = { "output": quitReason, "reason": quitReason }
   if (solutionsFound >= maxSolutions):
     quit = True
     quitReason = "Max suggestions found (" + str(maxSolutions) + ")"
     apiOutput['quitReason'] = { "output": quitReason, "reason": "MaxSolutions", "data": maxSolutions }
     return quit
   (listas, listas_size) = comb.combinations(_variables_total)
-  
   for lista in listas:
     if quit:
       break
@@ -684,10 +580,16 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
                     values = values[:values.index(', else')]
                   rawValueFromSolver = values.split('" -> ')[1]
                   prettyValue = rawValueFromSolver
+                  fullnames = fullname.split('.')
+                  fullnames[1] = fullnames[1][:len(fullnames[1])-1]
+                  try:
+                    fullnames[1] = fullnames[1].split('_')[1] + '\'s ' + fullnames[1].split('_')[0]
+                  except:
+                    1 + 1
                   try:
                     dataType = MainData["valueTypes"][fullname.split('.').pop()]
-                    prettyValue = prettifyValue(dataType, rawValueFromSolver)
-                    suggestion['output'] += "\n    - " + " > ".join(fullname.split('.')) + ' to ' + "(" + prettyValue + ")"
+                    prettyValue = prettifyValue(dataType, rawValueFromSolver, MainData)
+                    suggestion['output'] += "\n    - " + " > ".join(fullnames) + ' to ' + "(" + prettyValue + ")"
                     suggestion['changes'].append({
                       "toscaObjectName": fullname.split('.')[0],
                       "propertyName": fullname.split('.').pop(),
@@ -698,7 +600,7 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
                   except:
                     if str(fullname.split('.').pop()) == "mem_size":
                       prettyValue = dec2Bin(int(prettyValue))
-                    suggestion['output'] += "\n    - " + " > ".join(fullname.split('.')) + ' to ' + "(" + prettyValue + ")"
+                    suggestion['output'] += "\n    - " + " > ".join(fullnames) + ' to ' + "(" + prettyValue + ")"
                     suggestion['changes'].append({
                       "toscaObjectName": fullname.split('.')[0],
                       "propertyName": fullname.split('.').pop(),
@@ -723,38 +625,172 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
           # max soluciones encontradas o el tiempo expiro
   return quit
 
+"""
+ Node Methods
+ - [   ] is_derived_from
+ - [   ] name
+ - [   ] parent_type
 
-def playground(tosca):
-  if not hasattr(tosca, "nodetemplates"):
-    print("no nodetemplates")
+ - [ ∆ ] get_capabilities_objects
+ - [ ∆ ] get_properties_objects
+ - [ ~ ] interfaces
+ - [ ç ] related_nodes
+
+ - [ x ] relationship_tpl
+ - [ ç ] relationships
+ - [ ∆ ] requirements
+
+ - [ x ] get_relationship_template
+ - [ x ] sub_mapping_tosca_template
+ - [ ~ ] templates
+
+ - [ ç ] type
+ - [ ç ] type_definition
+ - [ x ] validate
+"""
+
+def get_attributes_objects(node):
+  _node = node.templates[node.name]
+  if _node.get('attributes') is not None:
+    return  _node.get('attributes')
+  else:
+    return {}
+
+def scanAllPropertiesAndGenerateStructure(tosca):
+  if not hasattr(tosca, "nodetemplates"): print("no nodetemplates")
+  nodes = {}
   for node in tosca.nodetemplates:
-    nodeDict = node.templates.get(node.name)
-    skipProps = ['type']
-    props = node.get_properties_objects()
-    lenstr = compose(str, len)
-    print("type       : " + node.type)
-    print("name       : " + node.name)
-    print("parent-type: " + node.parent_type.type)
-    print("props: " + lenstr(props))
-    # for prop in props: print("  * " + str(prop.name) + "<" + str(prop.type) + ">=" + str(prop.value))
+    _node = {}
+    _node['type'] = node.type
+    _node['name'] = node.name
+    _node['props'] = {}
+
+    # Capabilities
+    for capa in node.get_capabilities_objects():
+      for prop in capa.get_properties_objects():
+        # print(prop.type, prop.name, prop.value)
+        # print(node.name + "." + prop.name+" = "+str(prop.value))
+        _node['props'][prop.name] = prop.value
     
-    # generic prop read
-    for (key, values) in nodeDict.items():
-      if key in skipProps: continue
-      print(key + ":")
-      if type(values) is type({}):
-        for (name, value) in values.items():
-          if type(value) is type({}):
-            print("  "+ name + ":")
-            for (k, v) in value.items(): print("    " + k + "=" + str(v))
-          else:
-            print("  " + name + "=" + str(value))
-      elif type(values) is type([]):
-        for item in values:
-          if type(item) is type({}):
-            for (k, v) in item.items(): print("    " + k + "=" + str(v))
-          else:
-            print("  " + "- " + str(item))
-      else:
-        print("  " + str(props))
-    print("- - - - - - - - - - - - - - - - - - - - - - -")
+    # Properties
+    for prop in node.get_properties_objects():
+      # print(prop.type, prop.name, prop.value)
+      # print(node.name + "." + prop.name + " = " + str(prop.value))
+      _node['props'][prop.name] = prop.value
+    
+    # Attributes
+    for (name, value) in get_attributes_objects(node).items():
+      # print(node.name + "." + name + " = " + str(value))
+      _node['props'][prop.name] = value
+
+    # Requirements
+    for req in node.requirements:
+      # should only contain 1 key
+      # the loop below should only run once
+      for (name, value) in req.items():
+        if type(value) is type({}):
+          for (k, v) in value.items():
+            # print(node.name + "." + name + "." + k + " = " + v)
+            if _node['props'].has_key(name + "." + k):
+              # append to array if found
+              _node['props'][name + "." + k].append(v)
+            else:
+              # there is a case where this key can repeat
+              _node['props'][name + "." + k] = [v]
+        else:
+          # print(node.name + "." + name + " = " + str(value))
+          _node['props'][name] = value
+    # add to nodes {}
+    nodes.setdefault(node.type, [])
+    nodes[node.type].append(_node)
+  return nodes
+
+def prepareOutputForZ3Core(nodes, MainData):
+  # Arrays
+  # - vms: tosca.nodes.Compute  
+  # - cps: tosca.nodes.nfv.CP
+  # - vdu: tosca.nodes.nfv.VDU
+  # - fps: tosca.nodes.nfv.FP
+  # -vnfs: tosca.nodes.nfv.VNF
+  # - vls: tosca.nodes.nfv.VL
+  # TODO: how to add a new type here?
+  lists = {
+    "vms": "tosca.nodes.Compute",
+    "cps": "tosca.nodes.nfv.CP",
+    "vdus": "tosca.nodes.nfv.VDU",
+    "fps": "tosca.nodes.nfv.FP",
+    "vnfs": "tosca.nodes.nfv.VNF",
+    "vls": "tosca.nodes.nfv.VL",
+  }
+  for custom in MainData["customTypes"]:
+    if lists.has_key(custom["name"]):
+      lists[custom["name"]] = custom["type"]
+  smt2 = ""
+  vars_counter = 0
+  for (arrayName, nodetype) in lists.items():
+    # just to remove the "s" at the end
+    arrayLabel = arrayName[:len(arrayName) - 1]
+    Title = arrayName.upper()
+    smt2 += "\n"
+
+    if not nodes.has_key(nodetype):
+      smt2 += ";;------------------------\n"
+      smt2 += ";;  " + Title + " Setup: 0, None detected\n"
+      smt2 += ";;  " + nodetype + "\n"
+      smt2 += ";;------------------------\n"
+      continue
+    
+    # number of items of type {nodetype}
+    total = len(nodes.get(nodetype))
+    smt2 += ";;------------------------\n"
+    smt2 += ";;  " + Title + " Setup\n"
+    smt2 += ";;  " + nodetype + "\n"
+    smt2 += ";;------------------------\n"
+    smt2 += "(declare-const " + arrayName + " (Array Int (Array String Int)))\n"
+    for i in range(1, total + 1):
+      smt2 += "(declare-const props_" + arrayLabel + str(i) + " (Array String Int))\n"
+    smt2 += "(declare-const " + arrayName + "_size Int)\n"
+    smt2 += "(assert (= " + arrayName + "_size " + str(total) +"))\n"
+    smt2 += ";;------ Done " + Title + " Setup ------\n\n"
+
+
+    smt2 += ";;------------------------\n"
+    smt2 += ";;  " + Title + " Insert Values From Conf\n"
+    smt2 += ";;------------------------\n"
+    
+    items_counter = 1
+    
+    # for each item of type: nodetype
+    for item in nodes.get(nodetype):  
+      itemid = str(items_counter)
+      name = item.get("name") if item.has_key("name") else "var_id_" + itemid
+      smt2 += ";; "+arrayLabel+"-name: " + name + "\n"
+      item_name = "props_" + arrayLabel + str(itemid)
+
+      # for each property that the item has
+      for (prop_name, prop_value) in item.get("props").items():
+        # this following line improves A LOT the performance
+        if not prop_name in MainData['rules']['attributes'] and MainData['optimized']: continue
+        varid = str(vars_counter)
+        if type(prop_value) is type([]):
+          # Que hacemos con estos arrays?
+          print(prop_value)
+          continue
+        
+        # find the correct type for smtlib, handles: ips, memory sizes, ints, strings, bools
+        # TODO: docs write this transformation of types
+        value = toscaRawValueToSMTCorrectType(prop_name, prop_value, MainData)
+        
+        # this will comment out the variable
+        if int(varid) in MainData["skipIDs"]: smt2 += ";; "
+        
+        smt2 += "(assert (= (store "+item_name+" \"" + prop_name +"\" " + value +") "+item_name+"))" + ";; var.id: " + varid +"\n"
+        MainData["variables"]["names"].append(name + "." + item_name + "." + prop_name)
+        vars_counter += 1
+      index_of_array = str(int(itemid) - 1)
+      smt2 += "(assert (= (store "+arrayName+" "+ index_of_array +" "+item_name+") "+arrayName+"))\n\n"
+      items_counter += 1
+    MainData["sizes"][arrayName] = items_counter
+  MainData["variables"]["total"] = vars_counter
+  MainData["blob"] = smt2
+  return MainData
