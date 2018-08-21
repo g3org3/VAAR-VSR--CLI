@@ -74,7 +74,6 @@ class ParserShell(object):
     tosca = None
     try:
       tosca = ToscaTemplate(path, None, a_file)
-      # epav.playground(tosca)
     except:
       print("⚠️ tosca-parser: Could not parse the given file.")
       if args.verbose:
@@ -137,13 +136,14 @@ class ParserShell(object):
       return
 
     MainData = epav.prepareOutputForZ3(tosca, user_path_custom_rules)
+
     (s, status) = epav.solve()
     
     apiOutput['sat'] = status
 
     first_solution_time = time.time() - config["start_time"]
-    if not bool(config['apiOutput']):
-      print("\n[time][isSat?]: "+ str(first_solution_time))
+    # if not bool(config['apiOutput']):
+    #   print("\n[time][isSat?]: "+ str(first_solution_time))
 
     if not bool(config['apiOutput']):
       pyfancy().underlined("\nUser Rules").output()
@@ -159,7 +159,7 @@ class ParserShell(object):
     elapsed_time = time.time() - config["start_time"]
     apiOutput['time'] = elapsed_time
     if not bool(config['apiOutput']):
-      print("[time]  : "+ str(elapsed_time))
+      print("time (seconds)  : "+ str(elapsed_time))
     
     if bool(config['apiOutput']):
       print json.dumps(apiOutput, indent=2, separators=(',', ': '))
