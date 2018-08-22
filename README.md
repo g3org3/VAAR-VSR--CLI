@@ -1,2 +1,2 @@
-# ext-parse-and-validation (EPAV)
+# EPAV
 Extended parser and validations to the TOSCA configuration request
