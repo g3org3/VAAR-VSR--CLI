@@ -5,10 +5,27 @@ import z3
 import time
 import md5
 import json
+import smtlib
+import extras
 from pyfancy import *
 from functools import reduce
 
 OUTPUT_PATH = './output/ouput.smt2'
+
+def getCPS(tosca):
+  return extras.getCPS(tosca)
+def getConnectivityGraph(cpsItems, cpsDict):
+  return extras.getConnectivityGraph(cpsItems, cpsDict)
+def debugMatrix(title, flag, cpsItems, matrix):
+  return extras.debugMatrix(title, flag, cpsItems, matrix)
+def getForwardingPaths(tosca):
+  return extras.getForwardingPaths(tosca)
+def debugBugMatrix(matrixBugs, config, apiOutput):
+  return extras.debugBugMatrix(matrixBugs, config, apiOutput)
+def func_chains(forwarding_paths, cpsItems):
+  return extras.func_chains(forwarding_paths, cpsItems)
+def findLoop(connectivity, cpsItems, obj, args):
+  return extras.findLoop(connectivity, cpsItems, obj, args)
 
 def compose(*functions):
     def compose2(f, g):
@@ -220,227 +237,6 @@ def parseUserRules(rawInput, MainData):
 ;;endfor
 """
 
-
-"""---------------
-  GET CPS
----------------"""
-def getCPS(tosca):
-  if not hasattr(tosca, 'nodetemplates'):
-    return ([], {})
-  nodetemplates = tosca.nodetemplates
-
-  # Obtain the Connection points
-  cps = filter(lambda x: x.type == "tosca.nodes.nfv.CP", nodetemplates)
-
-  # Obtain the virtuallink of the connection point
-  cps = map(lambda x: {
-    "name": x.name,
-    "requirements": x.requirements,
-    "link": filter(lambda y: y.has_key('virtualLink'), x.requirements)
-    }, cps)
-
-  # Grab the actual value of the virtual link
-  cps = map(lambda x: {
-    "name": x['name'],
-    "requirements": x['requirements'],
-    "link": x['link'][0]['virtualLink'] if (len(x['link']) > 0) else ""
-    }, cps)
-
-  # Array to Object/Dictionary, where name is the key
-  cpsDict = {}
-  for cp in cps:
-    cpsDict[cp['name']] = cp
-
-  connectivity = []
-
-  # Change Dictionary to fixed Array and get length
-  cpsItems = sorted(cpsDict.items(), key=lambda x: x[0])
-  return (cpsItems, cpsDict)
-
-"""---------------
-GET Connecttivity Graph
----------------"""
-def getConnectivityGraph(cpsItems, cpsDict):
-  connectivity = []
-  cpsItemsLength = len(cpsItems)
-
-  # Fill the array with arrays of zeros
-  for cp in cpsItems:
-    connectivity.append([0] * cpsItemsLength)
-
-  # Fill the connectivity matrix
-  for r in range(0, cpsItemsLength):
-    for c in range(0, cpsItemsLength):
-      if r == c:
-        connectivity[r][c] = 0
-      else:
-        # get relationship
-        cpfrom = cpsItems[r][0]
-        cpto = cpsItems[c][0]
-        if cpsDict[cpfrom]['link'] == cpsDict[cpto]['link']:
-          # print cpfrom, '->', cpto, '(', r, ',', c,')'
-          connectivity[r][c] = 1
-  return connectivity
-
-"""---------------
-  Debug Matrix
----------------"""
-def debugMatrix(title, flag, cpsItems, matrix):
-  if (not flag): return
-  print title
-  print '\t--- ', ' '.join(map(lambda x: x[0], cpsItems))
-  for x in range(0, len(cpsItems)):
-    _matrix = matrix[x].tolist()[0] if hasattr(matrix[x], 'tolist') else matrix[x]
-    print '\t', cpsItems[x][0] + "  ", " | ".join(map(lambda y: str(y), _matrix))
-
-"""---------------
-  Get Forwarding Paths
----------------"""
-def getForwardingPaths(tosca):
-  if not hasattr(tosca, 'nodetemplates'):
-    return []
-  nodetemplates = tosca.nodetemplates
-
-  forwarding_paths = filter(lambda x: x.type == "tosca.nodes.nfv.FP", nodetemplates)
-  forwarding_paths = map(lambda x: {
-    "relations": map(lambda y: y["forwarder"], x.requirements),
-    "name": x.name
-  }, forwarding_paths)
-  return forwarding_paths
-
-"""---------------
-  Func Chains
----------------"""
-def func_chains(forwarding_paths, cpsItems):
-  matrixList = []
-  for fp in forwarding_paths:
-    matrix = []
-    total_cps = len(cpsItems)
-    for cp in cpsItems:
-      matrix.append([0] * total_cps)
-    cps_in_FP = {}  
-    for forwarder in fp["relations"]:
-      fromCP = forwarder["capability"]
-      toCP = forwarder['relationship']
-      cps_in_FP[fromCP] = 1
-      cps_in_FP[toCP] = 1
-      # print fromCP, "->", toCP
-      names = map(lambda x: x[0], cpsItems)
-      fromIndex = names.index(fromCP)
-      toIndex = names.index(toCP)
-      matrix[fromIndex][toIndex] = 1
-    matrixList.append({
-      "name": fp["name"],
-      "matrix": matrix,
-      "total_cps": len(cps_in_FP.items()),
-      "cps": cps_in_FP.items()
-    })
-  return matrixList
-
-
-"""------------------
-  Has a Loop: found any 1s in the diagonal?
-------------------"""
-def hasLoop(matrix):
-  return len(filter(lambda x: x is not 0, matrix.diagonal().tolist()[0])) > 0
-
-
-"""------------------
-  Get Position of Negative
-------------------"""
-def getPosOfNegative(cpsItems, matrix):
-  _matrix = matrix.tolist()
-  names = map(lambda x: x[0], cpsItems)
-  message = "  |> Found connection problem"
-  fromNode = ""
-  toNode = ""
-  for x in range(0, len(_matrix)):
-    for y in range(0, len(_matrix)):
-      if _matrix[x][y] == -1:
-        message += "\n    • " + names[x] + " -x-> " + names[y]
-        fromNode = names[x]
-        toNode = names[y]
-  return { "output": message, "problem": "connectivity", "from": fromNode, "to": toNode }
-
-
-"""------------------
-  Nodes Involved
-------------------"""
-def nodesInvolved(cpsItems, matrix):
-  _matrix = matrix.tolist()
-  _names = []
-  names = map(lambda x: x[0], cpsItems)
-  for x in range(0, len(_matrix)):
-    if _matrix[x][x] is not 0:
-      _names.append(names[x])
-  return _names
-
-
-"""------------------
-  debugBugMatrix
-------------------"""
-def debugBugMatrix(matrixBugs, config, apiOutput):
-  for tupl in matrixBugs:
-    (name, bugs) = tupl
-    if len(bugs) is not 0:
-      if bool(config['apiOutput']):
-        apiOutput['FPIssues'][name] = bugs
-      else:
-        pyfancy().underlined("⚠️  " + name).output()
-        for bug in bugs:
-          print(bug.get('ouput'))
-    else:
-      if bool(config['apiOutput']):
-        apiOutput['FPIssues'][name] = []
-      else:
-        pyfancy("  ✅  " + name).output()
-
-
-"""------------------
-  Find Loop
-------------------"""
-def findLoop(connectivity, cpsItems, obj, args):
-  matrix = obj['matrix']
-  total_cps = obj['total_cps']
-  name = obj['name']
-  m = np.matrix(matrix)
-  n = total_cps
-  if args.verbose or args.diff:
-    pyfancy("\n   -->  ").underlined(name +":").output()
-    debugMatrix("", args.verbose or args.diff, cpsItems, m)
-  difference = np.matrix(connectivity) - m
-  bugs = []
-  if args.diff:
-    if difference.min() == -1:
-      pyfancy().yellow("\n\tConnection problem detected").output()
-    else:
-      pyfancy().dim("diff->").output()
-    debugMatrix("", args.diff, cpsItems, difference)
-  if difference.min() == -1:
-    bugs.append(getPosOfNegative(cpsItems, difference))
-  for x in range(1, n + 1):
-    matrixToPower = m**x
-    if (hasLoop(matrixToPower)):
-      cpsInvolved = ", ".join(nodesInvolved(cpsItems, matrixToPower))
-      bugs.append({
-        "ouput": "  |> Found loop!\n    • Length: " + str(x) + "\n    •    CPs: " + cpsInvolved,
-        "problem": "loop",
-        "length": x,
-        "cpsInvolved": nodesInvolved(cpsItems, matrixToPower)
-      })
-      if args.verbose:
-        pyfancy().yellow("\n\tLoop detected in the matrix below: ^("+str(x)+")").output()
-        debugMatrix("", args.verbose, cpsItems, matrixToPower)
-      break
-  # if not args.verbose and not args.diff:
-    # if len(bugs) is not 0:
-    #     pyfancy().underlined("⚠️  " + name).output()
-    #     for bug in bugs:
-    #         print bug
-    # else:
-    #     pyfancy("✅  " + name).output()
-  return (name, bugs)
-
 def prettifyValue(dataType, rawValueFromSolver, MainData):
   if dataType is "ip":
     return Int2IP(int(rawValueFromSolver))
@@ -469,7 +265,7 @@ def getAttributesFromUserRules(rawRules):
 """------------------
   Prepare output for z3
 ------------------"""
-def prepareOutputForZ3(tosca, USER_RULES_PATH, ids = []):
+def prepareOutputForZ3(tosca, USER_RULES_PATH, config, ids = []):
   output = open(OUTPUT_PATH, mode='w')
   userRawRules = open(USER_RULES_PATH).read()
   MainData = {
@@ -478,14 +274,26 @@ def prepareOutputForZ3(tosca, USER_RULES_PATH, ids = []):
       "names": [],
       "total": 0
     },
-    "sizes": {
-      "vms": 0,
-      "vnfs": 0,
-      "cps": 0,
-      "vdus": 0,
-      "networks": 0,
-      # TODO: agregar aqui el nuevo type
-    },
+    "types": {
+      "vnfs": "tosca.nodes.nfv.VNF",
+      "vdus": "tosca.nodes.nfv.VDU",
+      "vls": "tosca.nodes.nfv.VL",
+      "cps": "tosca.nodes.nfv.CP",
+      "fps": "tosca.nodes.nfv.FP",
+      "vms": "tosca.nodes.Compute",
+      "networks": "tosca.nodes.network.Network"
+    },# TODO: agregar aqui el nuevo type y size
+    "sizes": {},
+    # we generate this below
+    # "sizes": {
+    #   "vnfs": 0,
+    #   "vdus": 0,
+    #   "vls": 0,
+    #   "cps": 0,
+    #   "fps": 0,
+    #   "vms": 0,
+    #   "networks": 0,
+    # },
     "custom_rules": USER_RULES_PATH,
     "optimized": True,
     "skipIDs": ids,
@@ -496,6 +304,17 @@ def prepareOutputForZ3(tosca, USER_RULES_PATH, ids = []):
     },
     "customTypes": findCustomTypesInUserRules(userRawRules)
   }
+
+  # add Custom Types
+  for custom in MainData["customTypes"]:
+    if MainData["types"].has_key(custom["name"]):
+      MainData["types"][custom["name"]] = custom["type"]
+    else:
+      if config.has_key("experimental") and bool(config.get("experimental")):
+        MainData["types"][custom["name"]] = custom["type"]
+  
+  # Generate Sizes
+  for key in MainData["types"].keys(): MainData["sizes"][key] = 0
 
   nodes = scanAllPropertiesAndGenerateStructure(tosca)
   prepareOutputForZ3Core(nodes, MainData)
@@ -547,7 +366,7 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
           apiOutput['quitReason'] = { "output": quitReason, "reason": "Timeout", "data": time.time() }
           quit = True
           break
-        prepareOutputForZ3(tosca, user_path_custom_rules, ids)
+        prepareOutputForZ3(tosca, user_path_custom_rules, config, ids)
         (s, status) = solve()
         if status is "sat":
           # print(s.model())
@@ -707,24 +526,15 @@ def scanAllPropertiesAndGenerateStructure(tosca):
 
 def prepareOutputForZ3Core(nodes, MainData):
   # Arrays
-  # - vms: tosca.nodes.Compute  
-  # - cps: tosca.nodes.nfv.CP
-  # - vdu: tosca.nodes.nfv.VDU
-  # - fps: tosca.nodes.nfv.FP
   # -vnfs: tosca.nodes.nfv.VNF
+  # - vdu: tosca.nodes.nfv.VDU
   # - vls: tosca.nodes.nfv.VL
-  # TODO: how to add a new type here?
-  lists = {
-    "vms": "tosca.nodes.Compute",
-    "cps": "tosca.nodes.nfv.CP",
-    "vdus": "tosca.nodes.nfv.VDU",
-    "fps": "tosca.nodes.nfv.FP",
-    "vnfs": "tosca.nodes.nfv.VNF",
-    "vls": "tosca.nodes.nfv.VL",
-  }
-  for custom in MainData["customTypes"]:
-    if lists.has_key(custom["name"]):
-      lists[custom["name"]] = custom["type"]
+  # - cps: tosca.nodes.nfv.CP
+  # - fps: tosca.nodes.nfv.FP
+  # - vms: tosca.nodes.Compute
+  # - networks: tosca.nodes.network.Network
+
+  lists = MainData["types"]
   smt2 = ""
   vars_counter = 0
   for (arrayName, nodetype) in lists.items():
@@ -732,7 +542,6 @@ def prepareOutputForZ3Core(nodes, MainData):
     arrayLabel = arrayName[:len(arrayName) - 1]
     Title = arrayName.upper()
     smt2 += "\n"
-
     if not nodes.has_key(nodetype):
       smt2 += ";;------------------------\n"
       smt2 += ";;  " + Title + " Setup: 0, None detected\n"
@@ -747,7 +556,7 @@ def prepareOutputForZ3Core(nodes, MainData):
     smt2 += ";;  " + nodetype + "\n"
     smt2 += ";;------------------------\n"
     smt2 += "(declare-const " + arrayName + " (Array Int (Array String Int)))\n"
-    for i in range(1, total + 1):
+    for i in range(0, total):
       smt2 += "(declare-const props_" + arrayLabel + str(i) + " (Array String Int))\n"
     smt2 += "(declare-const " + arrayName + "_size Int)\n"
     smt2 += "(assert (= " + arrayName + "_size " + str(total) +"))\n"
@@ -758,7 +567,7 @@ def prepareOutputForZ3Core(nodes, MainData):
     smt2 += ";;  " + Title + " Insert Values From Conf\n"
     smt2 += ";;------------------------\n"
     
-    items_counter = 1
+    items_counter = 0
     
     # for each item of type: nodetype
     for item in nodes.get(nodetype):  
@@ -770,11 +579,15 @@ def prepareOutputForZ3Core(nodes, MainData):
       # for each property that the item has
       for (prop_name, prop_value) in item.get("props").items():
         # this following line improves A LOT the performance
-        if not prop_name in MainData['rules']['attributes'] and MainData['optimized']: continue
+        # if not prop_name in MainData['rules']['attributes'] and MainData['optimized']: continue
         varid = str(vars_counter)
         if type(prop_value) is type([]):
-          # Que hacemos con estos arrays?
-          print(prop_value)
+          getValue = lambda name, value: toscaRawValueToSMTCorrectType(name, value, MainData)
+          isIgnored = lambda x: int(x) in MainData["skipIDs"]
+          smt2 += smtlib.declareArray("Array", item_name+"."+prop_name, len(prop_value))
+          (varid, output) = smtlib.fillArray(varid, prop_value, item_name+"."+prop_name , getValue, isIgnored)
+          smt2 += output
+          vars_counter = varid + 1
           continue
         
         # find the correct type for smtlib, handles: ips, memory sizes, ints, strings, bools
@@ -784,13 +597,16 @@ def prepareOutputForZ3Core(nodes, MainData):
         # this will comment out the variable
         if int(varid) in MainData["skipIDs"]: smt2 += ";; "
         
-        smt2 += "(assert (= (store "+item_name+" \"" + prop_name +"\" " + value +") "+item_name+"))" + ";; var.id: " + varid +"\n"
+        # "(assert (= (store "+item_name+" \"" + prop_name +"\" " + value +") "+item_name+"))" + ";; var.id: " + varid +"\n"
+        smt2 += smtlib.assignToHashMap(item_name, prop_name, value, varid)
         MainData["variables"]["names"].append(name + "." + item_name + "." + prop_name)
         vars_counter += 1
       index_of_array = str(int(itemid) - 1)
-      smt2 += "(assert (= (store "+arrayName+" "+ index_of_array +" "+item_name+") "+arrayName+"))\n\n"
+      smt2 += smtlib.assignToArray(arrayName, index_of_array, item_name)
+      smt2 += "\n"
+      # smt2 += "(assert (= (store "+arrayName+" "+ index_of_array +" "+item_name+") "+arrayName+"))\n\n"
       items_counter += 1
-    MainData["sizes"][arrayName] = items_counter
+    MainData["sizes"][arrayName] = items_counter + 1
   MainData["variables"]["total"] = vars_counter
   MainData["blob"] = smt2
   return MainData
