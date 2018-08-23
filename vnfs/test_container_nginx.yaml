@@ -1,0 +1,30 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA simple profile with mysql docker container.
+
+imports:
+  - custom_types/k8s-container-type.yaml
+
+# Repositories to retrieve code artifacts from
+repositories:
+  docker_hub: https://registry.hub.docker.com/
+  # docker_hub: https://registry.jorgeadolfo.com
+
+
+topology_template:
+  node_templates:
+    # The MYSQL container based on official MySQL image in Docker hub
+    nginx_test:
+      # type: tosca.nodes.Container.Application.Docker
+      type: tosca.nodes.ETSO.K8s.Container
+      properties:
+        name: nginx-test1
+        service_type: NodePort
+        port: 31004
+        replicas: 3
+      artifacts:
+        nginx_image:
+          file: nginx
+          type: tosca.artifacts.Deployment.Image.Container.Docker
+          repository: docker_hub
