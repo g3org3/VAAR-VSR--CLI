@@ -579,7 +579,7 @@ def prepareOutputForZ3Core(nodes, MainData):
       # for each property that the item has
       for (prop_name, prop_value) in item.get("props").items():
         # this following line improves A LOT the performance
-        # if not prop_name in MainData['rules']['attributes'] and MainData['optimized']: continue
+        if not prop_name in MainData['rules']['attributes'] and MainData['optimized']: continue
         varid = str(vars_counter)
         if type(prop_value) is type([]):
           getValue = lambda name, value: toscaRawValueToSMTCorrectType(name, value, MainData)
