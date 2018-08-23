@@ -135,7 +135,7 @@ class ParserShell(object):
         print("No custom rules detected")
       return
 
-    MainData = epav.prepareOutputForZ3(tosca, user_path_custom_rules)
+    MainData = epav.prepareOutputForZ3(tosca, user_path_custom_rules, config)
 
     (s, status) = epav.solve()
     
