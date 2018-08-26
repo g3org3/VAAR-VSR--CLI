@@ -19,16 +19,19 @@ def declareArray(type, name, size):
   output += assignVariable(None, name + "_size", size)
   return output
 
-def fillArray(varid, values, array_name, getValue, isIgnored):
+def fillArray(toscaName, varid, values, array_name, getValue, isIgnored, saveValue):
   output = ""
   varid = int(varid) - 1
   # getValue = lambda name, value: toscaRawValueToSMTCorrectType(name, value, MainData)
   for i in range(0, len(values)):
     varid += 1
-    # if isIgnored(varid): continue
     rawvalue = values[i]
-    value = getValue(array_name+"."+str(i), rawvalue)
+    saveValue(toscaName + "." + array_name + "_" + str(i))
+    value = getValue(array_name+"_"+str(i), rawvalue)
+    if isIgnored(varid):
+      output += ";;"
     output += assignVariable(varid, array_name, value, i)
+    
   return (varid, output)
 
 def assignToArray(arrayName, index, value):
