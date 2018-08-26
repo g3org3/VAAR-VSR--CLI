@@ -3,10 +3,10 @@ import numpy as np
 import re
 import z3
 import time
-import md5
 import json
 import smtlib
 import extras
+import md5
 from pyfancy import *
 from functools import reduce
 
@@ -26,11 +26,6 @@ def func_chains(forwarding_paths, cpsItems):
   return extras.func_chains(forwarding_paths, cpsItems)
 def findLoop(connectivity, cpsItems, obj, args):
   return extras.findLoop(connectivity, cpsItems, obj, args)
-
-def compose(*functions):
-    def compose2(f, g):
-        return lambda x: f(g(x))
-    return reduce(compose2, functions, lambda x: x)
 
 def dec2Bin(num):
   sym = "B"
@@ -155,6 +150,11 @@ def toscaRawValueToSMTCorrectType(attributeName, value, MainData):
     MainData["stringsHashMap"][result] = value
     return result
 
+def compose(*functions):
+    def compose2(f, g):
+        return lambda x: f(g(x))
+    return reduce(compose2, functions, lambda x: x)
+
 def findCustomTypesInUserRules(rawInput):
   customTypes = []
   for line in rawInput.split('\n'):
@@ -163,6 +163,9 @@ def findCustomTypesInUserRules(rawInput):
       if len(line) is 4:
         if line[0] == ";;" and line[1] == "deftype":
           customTypes.append({ "name": line[2], "type": line[3] })
+      if len(line) is 3:
+        if line[0] == ";;deftype":
+          customTypes.append({ "name": line[1], "type": line[2] })
   return customTypes
 
 def parseUserRules(rawInput, MainData):
@@ -171,7 +174,17 @@ def parseUserRules(rawInput, MainData):
   invalid_for = True
   empty_for = False
   for_name = ""
-  for_iterator_name =""
+  for_iterator_name = ""
+  
+  nested_inside_for = False
+  nested_invalid_for = True
+  nested_empty_for = False
+  nested_for_name = ""
+  nested_for_iterator_name = ""
+  nested_content = ""
+
+  smt2_extra_fors = ""
+
   validArrays = sizes.keys()
   smt2  = "\n\n;;------------------------\n"
   smt2 += ";;  USER Rules\n"
@@ -180,21 +193,75 @@ def parseUserRules(rawInput, MainData):
     line = preProcessor(line, MainData)
     # print line, invalid_for, empty_for, inside_for
     if ";;endfor" in line:
-      # print invalid_for
-      if not invalid_for:
-        smt2 += "  )\n"
-        smt2 += "))\n\n"
+      if nested_inside_for:
+        nested_inside_for = False
+        nested_invalid_for = True
+        nested_empty_for = False
+        prop_name = ".".join(nested_for_name.split('.')[1:len(nested_for_name.split('.'))])
+        itername = nested_for_name.split('.')[0]
+        def transform(x):
+          prop_name = ".".join(x.split('.')[1:len(x.split('.'))])
+          itername = x.split('.')[0].split('_')[1]
+          return { "prop_name": prop_name, "itername": itername, "key": x }
+        transformed = map(transform, MainData["nested"].keys())
+        arrays = filter(lambda x: x['prop_name'] == prop_name and x['itername'] == itername, transformed)
+        correct_keys = map(lambda x: x['key'], arrays)
+        i = 0
+        total = len(correct_keys)
+        ands_needed = total - 1
+        ands_i = 0
+        for key in correct_keys:
+          padding = " "*((ands_i-1)*2)
+          content = ""
+          content += ""+padding+"(assert (forall ((y Int))\n"
+          content += "  "+padding+"(=>\n"
+          content += "    "+padding+"(and (< y " + key + "_size) (> y -1))\n"
+          content += nested_content.replace(nested_for_iterator_name, "(select " + key + " y) ")
+          content += "  "+padding+")\n"
+          content += ""+padding+"))"
+          if ands_needed is 0:
+            smt2_extra_fors += content + "\n"
+          elif ands_i < ands_needed:
+            ands_i += 1
+            smt2_extra_fors += "      "+" "*((ands_i-1)*2)+"(and\n"
+            smt2_extra_fors += "  "+" "*((ands_i-1)*2) + content + "\n"
+          elif i is 0 and ands_needed is not 0:
+            ands_i += 1
+            smt2_extra_fors += "      (and\n"
+            smt2_extra_fors += content+"\n"
+          else:
+            smt2_extra_fors += " "*((ands_i-1)*2)+ content
+            if ands_i is ands_needed:
+              for x in range(0, ands_needed):
+                smt2_extra_fors += "\n    "+" "*((ands_needed-x-1)*2) +")"
+              smt2_extra_fors += '\n'
+          i += 1
       else:
-        smt2 += line + "\n\n"
-      inside_for = False
-      invalid_for = True
-      empty_for = False
+        # print invalid_for
+        if not invalid_for:
+          smt2 += "  )\n"
+          smt2 += "))\n\n"
+        else:
+          smt2 += line + "\n\n"
+        inside_for = False
+        invalid_for = True
+        empty_for = False
     elif inside_for:
-      if invalid_for:
+      if nested_inside_for:
+        nested_content += line + "\n"
+      elif ";;for " in line:
+        nested_inside_for = True
+        nested_for_name = line.split('in ')[1]
+        nested_for_iterator_name = line.split("in ")[0].split(";;for ")[1].strip()
+        nested_content = ""
+      elif invalid_for:
         smt2 += ";;    " + line + "\n"
       elif for_iterator_name in line:
+        # (< (select vmi "mem_size") 48)
         smt2 += "    " + line.replace(for_iterator_name, "(select " + for_name + " x) ") + "\n"
       else:
+        # (< vmi.mem_size 48)
+        line = sugarSyntaxGetProperty(line, for_name)
         smt2 += "    " + line + "\n"
     elif ";;for " in line:
       inside_for = True
@@ -217,6 +284,7 @@ def parseUserRules(rawInput, MainData):
         smt2 += line + "\n"
     else:
       smt2 += line
+  smt2 += smt2_extra_fors
   smt2 += ";;------ Done USER Rules ------\n\n"
   return smt2
 """
@@ -251,6 +319,8 @@ def prettifyValue(dataType, rawValueFromSolver, MainData):
 def getAttributesFromUserRules(rawRules):
   attList = []
   for line in rawRules.split('\n'):
+    if "deftype" not in line:
+      line = sugarSyntaxGetProperty(line, "")
     try:
       pattern = re.compile(r"\"(.+)\"")
       start = pattern.search(line).start()
@@ -261,6 +331,20 @@ def getAttributesFromUserRules(rawRules):
     except:
       attList = attList
   return attList
+
+def sugarSyntaxGetProperty(line, arrayName):
+  # (< vmi.mem_size 4599)
+  # into => (< (select (select vnfs x) "version") 4599)
+  try:
+    pattern = re.compile(r"\w+(\.\w+)+")
+    start = pattern.search(line).start()
+    end = pattern.search(line).end()
+    att = line[start:end]
+    parts = att.split('.')
+    att = ".".join(parts[1:len(parts)])
+    return pattern.sub("(select (select "+arrayName+" x) \""+att+"\")", line)
+  except:
+    return line
 
 """------------------
   Prepare output for z3
@@ -297,6 +381,7 @@ def prepareOutputForZ3(tosca, USER_RULES_PATH, config, ids = []):
     "custom_rules": USER_RULES_PATH,
     "optimized": True,
     "skipIDs": ids,
+    "nested": {},
     "stringsHashMap": {},
     "valueTypes": {},
     "rules": {
@@ -338,7 +423,7 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
   _variables_names = MainData["variables"]["names"]
   user_path_custom_rules = MainData["custom_rules"]
   quit = False
-  quitReason = "unreachable"
+  quitReason = "Could not find a suggestion, sorry"
   solutionsFound = 0
   maxSolutions = int(config["suggestions"])
   apiOutput['quitReason'] = { "output": quitReason, "reason": quitReason }
@@ -378,13 +463,54 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
           z3ModelName = []
           z3ModelProp = []
           z3ModelFullName = []
+          z3ModelNameNested = []
           for idd in ids:
-            z3ModelName.append(_variables_names[idd].split('.')[1])
-            z3ModelProp.append(_variables_names[idd].split('.')[2])
-            z3ModelFullName.append(_variables_names[idd])
-          # print " | ".join(z3ModelFullName)
+            name = _variables_names[idd]
+            z3ModelName.append(name.split('.')[1])
+            z3ModelProp.append(name.split('.')[2])
+            z3ModelFullName.append(name)
+            # ForwarderPATH2.props_fp_0.forwarder.capability_0
+            name = name.split('.')
+            name = ".".join(name[1:len(name)])
+            head = name.split('.')[0]
+            tail = ".".join(name.split('.')[1:len(name.split('.'))]).split('_')[0]
+            z3ModelNameNested.append(head+"."+tail)
           for var in s.model():
-            if str(var) in z3ModelName:
+            if str(var) in z3ModelNameNested:
+              # print "FOUND:", str(var)
+              # print z3ModelNameNested
+              indices = [i for i, x in enumerate(z3ModelNameNested) if x == str(var)]
+              for index in indices:
+                prop = z3ModelNameNested[index]
+                fullname = z3ModelFullName[index]
+                simplefullname = ".".join(fullname.split('.')[1:len(fullname.split('.'))])
+                nestedIndex = simplefullname[len(prop)+1:] + " -> "
+                values = str(s.model()[var])
+                values = values[values.index(nestedIndex):]
+                try:
+                  values = values[:values.index(',\n')]
+                except:
+                  values = values[:values.index(', else')]
+                rawValueFromSolver = values.split(' -> ')[1]
+                prettyValue = rawValueFromSolver
+                fullnames = prettifyFullName(fullname)
+                try:
+                  dataType = MainData["valueTypes"][simplefullname]
+                  prettyValue = prettifyValue(dataType, rawValueFromSolver, MainData)
+                  suggestion['output'] += "\n    - " + " > ".join(fullnames) + ' to ' + "(" + prettyValue + ")"
+                  suggestion['changes'].append({
+                    "fullname": fullname,
+                    "prettyValue": prettyValue,
+                    "rawValue": rawValueFromSolver 
+                  })
+                except:
+                  suggestion['output'] += "\n    - " + " > ".join(fullnames) + ' to ' + "(" + prettyValue + ")"
+                  suggestion['changes'].append({
+                    "fullname": fullname,
+                    "prettyValue": prettyValue,
+                    "rawValue": rawValueFromSolver
+                  })
+            elif str(var) in z3ModelName:
               # print "FOUND:", str(var)
               indices = [i for i, x in enumerate(z3ModelName) if x == str(var)]
               for index in indices:
@@ -399,12 +525,7 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
                     values = values[:values.index(', else')]
                   rawValueFromSolver = values.split('" -> ')[1]
                   prettyValue = rawValueFromSolver
-                  fullnames = fullname.split('.')
-                  fullnames[1] = fullnames[1][:len(fullnames[1])-1]
-                  try:
-                    fullnames[1] = fullnames[1].split('_')[1] + '\'s ' + fullnames[1].split('_')[0]
-                  except:
-                    1 + 1
+                  fullnames = prettifyFullName(fullname)
                   try:
                     dataType = MainData["valueTypes"][fullname.split('.').pop()]
                     prettyValue = prettifyValue(dataType, rawValueFromSolver, MainData)
@@ -429,7 +550,8 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
                     })
 
                 else:
-                  suggestion['output'] += "\nnot found `" + prop + "` in values" + " ".join(values.split(',\n'))
+                  # suggestion['output'] += "\nnot found `" + prop + "` in values" + " ".join(values.split(',\n'))
+                  suggestion['output'] = suggestion['output']
             # else:
             #   if not "k" in str(var):
             #     print "NOT-FOUND:", str(var)
@@ -557,7 +679,7 @@ def prepareOutputForZ3Core(nodes, MainData):
     smt2 += ";;------------------------\n"
     smt2 += "(declare-const " + arrayName + " (Array Int (Array String Int)))\n"
     for i in range(0, total):
-      smt2 += "(declare-const props_" + arrayLabel + str(i) + " (Array String Int))\n"
+      smt2 += "(declare-const props_" + arrayLabel + "_" + str(i) + " (Array String Int))\n"
     smt2 += "(declare-const " + arrayName + "_size Int)\n"
     smt2 += "(assert (= " + arrayName + "_size " + str(total) +"))\n"
     smt2 += ";;------ Done " + Title + " Setup ------\n\n"
@@ -574,7 +696,7 @@ def prepareOutputForZ3Core(nodes, MainData):
       itemid = str(items_counter)
       name = item.get("name") if item.has_key("name") else "var_id_" + itemid
       smt2 += ";; "+arrayLabel+"-name: " + name + "\n"
-      item_name = "props_" + arrayLabel + str(itemid)
+      item_name = "props_" + arrayLabel + "_" + str(itemid)
 
       # for each property that the item has
       for (prop_name, prop_value) in item.get("props").items():
@@ -584,8 +706,10 @@ def prepareOutputForZ3Core(nodes, MainData):
         if type(prop_value) is type([]):
           getValue = lambda name, value: toscaRawValueToSMTCorrectType(name, value, MainData)
           isIgnored = lambda x: int(x) in MainData["skipIDs"]
+          saveValue = lambda x: MainData["variables"]["names"].append(x)
           smt2 += smtlib.declareArray("Array", item_name+"."+prop_name, len(prop_value))
-          (varid, output) = smtlib.fillArray(varid, prop_value, item_name+"."+prop_name , getValue, isIgnored)
+          MainData["nested"][item_name+"."+prop_name] = len(prop_value)
+          (varid, output) = smtlib.fillArray(name, varid, prop_value, item_name+"."+prop_name , getValue, isIgnored, saveValue)
           smt2 += output
           vars_counter = varid + 1
           continue
@@ -601,7 +725,7 @@ def prepareOutputForZ3Core(nodes, MainData):
         smt2 += smtlib.assignToHashMap(item_name, prop_name, value, varid)
         MainData["variables"]["names"].append(name + "." + item_name + "." + prop_name)
         vars_counter += 1
-      index_of_array = str(int(itemid) - 1)
+      index_of_array = str(int(itemid))
       smt2 += smtlib.assignToArray(arrayName, index_of_array, item_name)
       smt2 += "\n"
       # smt2 += "(assert (= (store "+arrayName+" "+ index_of_array +" "+item_name+") "+arrayName+"))\n\n"
@@ -610,3 +734,12 @@ def prepareOutputForZ3Core(nodes, MainData):
   MainData["variables"]["total"] = vars_counter
   MainData["blob"] = smt2
   return MainData
+
+def prettifyFullName(fullname):
+  fullnames = fullname.split('.')
+  fullnames[1] = fullnames[1][:len(fullnames[1])-1]
+  try:
+    fullnames[1] = fullnames[1].split('_')[1] + '\'s ' + fullnames[1].split('_')[0]
+  except:
+    1 + 1
+  return fullnames
