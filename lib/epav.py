@@ -206,36 +206,15 @@ def parseUserRules(rawInput, MainData):
         transformed = map(transform, MainData["nested"].keys())
         arrays = filter(lambda x: x['prop_name'] == prop_name and x['itername'] == itername, transformed)
         correct_keys = map(lambda x: x['key'], arrays)
-        i = 0
-        total = len(correct_keys)
-        ands_needed = total - 1
-        ands_i = 0
         for key in correct_keys:
-          padding = " "*((ands_i-1)*2)
           content = ""
-          content += ""+padding+"(assert (forall ((y Int))\n"
-          content += "  "+padding+"(=>\n"
-          content += "    "+padding+"(and (< y " + key + "_size) (> y -1))\n"
+          content += "(assert (forall ((y Int))\n"
+          content += "  "+"(=>\n"
+          content += "    "+"(and (< y " + key + "_size) (> y -1))\n"
           content += nested_content.replace(nested_for_iterator_name, "(select " + key + " y) ")
-          content += "  "+padding+")\n"
-          content += ""+padding+"))"
-          if ands_needed is 0:
-            smt2_extra_fors += content + "\n"
-          elif ands_i < ands_needed:
-            ands_i += 1
-            smt2_extra_fors += "      "+" "*((ands_i-1)*2)+"(and\n"
-            smt2_extra_fors += "  "+" "*((ands_i-1)*2) + content + "\n"
-          elif i is 0 and ands_needed is not 0:
-            ands_i += 1
-            smt2_extra_fors += "      (and\n"
-            smt2_extra_fors += content+"\n"
-          else:
-            smt2_extra_fors += " "*((ands_i-1)*2)+ content
-            if ands_i is ands_needed:
-              for x in range(0, ands_needed):
-                smt2_extra_fors += "\n    "+" "*((ands_needed-x-1)*2) +")"
-              smt2_extra_fors += '\n'
-          i += 1
+          content += "  "+")\n"
+          content += "))"
+          smt2_extra_fors += content+"\n"
       else:
         # print invalid_for
         if not invalid_for:
