@@ -137,6 +137,9 @@ class ParserShell(object):
 
     MainData = epav.prepareOutputForZ3(tosca, user_path_custom_rules, config)
 
+    with open('./output/maindata.json', 'w') as fp:
+      json.dump(MainData, fp)
+
     (s, status) = epav.solve()
     
     apiOutput['sat'] = status
@@ -148,7 +151,7 @@ class ParserShell(object):
     if not bool(config['apiOutput']):
       pyfancy().underlined("\nUser Rules").output()
       print("  ✅ sat" if status is "sat" else "  ⚠️ unsat")
-    
+
     if status is "unsat":
       if (args.verbose or args.diff):
         print "  N =", MainData["variables"]["total"]
