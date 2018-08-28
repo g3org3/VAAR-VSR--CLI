@@ -465,6 +465,7 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
                 simplefullname = ".".join(fullname.split('.')[1:len(fullname.split('.'))])
                 nestedIndex = simplefullname[len(prop)+1:] + " -> "
                 values = str(s.model()[var])
+                print(s.model())
                 values = values[values.index(nestedIndex):]
                 try:
                   values = values[:values.index(',\n')]
