@@ -33,6 +33,9 @@ class ParserShell(object):
     parser.add_argument('-t', '--custom-rules',
                         metavar='<filename>',
                         help=_('smt file'))
+    parser.add_argument('-k', '--config-file',
+                        metavar='<filename>',
+                        help=_('config file'))
     return parser
 
   def main(self, argv):
@@ -82,7 +85,8 @@ class ParserShell(object):
         print("")
       exit(1)
 
-    configFile = file('./config')
+    configFilePath = args.config_file if args.config_file else './config'
+    configFile = file(configFilePath)
     apiOutput = {
       'FPIssues': {},
       'sat': False,
