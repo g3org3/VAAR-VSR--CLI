@@ -27,6 +27,17 @@ def func_chains(forwarding_paths, cpsItems):
 def findLoop(connectivity, cpsItems, obj, args):
   return extras.findLoop(connectivity, cpsItems, obj, args)
 
+def pluralize(word):
+  if word.endswith("y"):
+    return word[:len(word)-1] + "ies"
+  else:
+    return word + "s"
+
+def transform(x):
+  prop_name = ".".join(x.split('.')[1:len(x.split('.'))])
+  itername = x.split('.')[0].split('_')[1]
+  return { "prop_name": prop_name, "itername": itername, "key": x }
+
 def dec2Bin(num):
   sym = "B"
   total = num
@@ -199,10 +210,6 @@ def parseUserRules(rawInput, MainData):
         nested_empty_for = False
         prop_name = ".".join(nested_for_name.split('.')[1:len(nested_for_name.split('.'))])
         itername = nested_for_name.split('.')[0]
-        def transform(x):
-          prop_name = ".".join(x.split('.')[1:len(x.split('.'))])
-          itername = x.split('.')[0].split('_')[1]
-          return { "prop_name": prop_name, "itername": itername, "key": x }
         transformed = map(transform, MainData["nested"].keys())
         arrays = filter(lambda x: x['prop_name'] == prop_name and x['itername'] == itername, transformed)
         correct_keys = map(lambda x: x['key'], arrays)
@@ -262,7 +269,7 @@ def parseUserRules(rawInput, MainData):
           smt2 += "\n;; invalid for, did not match array name: \"" + for_name +"\"\n"
         smt2 += line + "\n"
     else:
-      smt2 += line
+      smt2 += line + "\n"
   smt2 += smt2_extra_fors
   smt2 += ";;------ Done USER Rules ------\n\n"
   return smt2
@@ -358,7 +365,7 @@ def prepareOutputForZ3(tosca, USER_RULES_PATH, config, ids = []):
     #   "networks": 0,
     # },
     "custom_rules": USER_RULES_PATH,
-    "optimized": True,
+    "optimized": bool(config["optimize"]),
     "skipIDs": ids,
     "nested": {},
     "stringsHashMap": {},
@@ -465,7 +472,7 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
                 simplefullname = ".".join(fullname.split('.')[1:len(fullname.split('.'))])
                 nestedIndex = simplefullname[len(prop)+1:] + " -> "
                 values = str(s.model()[var])
-                print(s.model())
+                # print(s.model())
                 values = values[values.index(nestedIndex):]
                 try:
                   values = values[:values.index(',\n')]
@@ -687,7 +694,7 @@ def prepareOutputForZ3Core(nodes, MainData):
           getValue = lambda name, value: toscaRawValueToSMTCorrectType(name, value, MainData)
           isIgnored = lambda x: int(x) in MainData["skipIDs"]
           saveValue = lambda x: MainData["variables"]["names"].append(x)
-          smt2 += smtlib.declareArray("Array", item_name+"."+prop_name, len(prop_value))
+          smt2 += smtlib.declareArray(item_name+"."+prop_name, len(prop_value))
           MainData["nested"][item_name+"."+prop_name] = len(prop_value)
           (varid, output) = smtlib.fillArray(name, varid, prop_value, item_name+"."+prop_name , getValue, isIgnored, saveValue)
           smt2 += output
@@ -712,6 +719,32 @@ def prepareOutputForZ3Core(nodes, MainData):
       items_counter += 1
     MainData["sizes"][arrayName] = items_counter + 1
   MainData["variables"]["total"] = vars_counter
+  
+  if len(MainData["nested"]) is not 0:
+    # CREATE arrays for nested arrays, for i.e.
+    # ;;fps.forwarder.capabilities
+    # ;;fps.forwarder.capabilities_size
+    # ;;fps.forwarder.capabilities_sizes
+    smt2 += smtlib.commentTitle("Extra Arrays")
+    arrays = {}
+    def joinname(x):
+      names = [ pluralize(x["itername"]), pluralize(x["prop_name"]) ]
+      name = ".".join(names)
+      if arrays.has_key(name):
+        arrays[name].append(x["key"])
+      else:
+        arrays[name] = [x["key"]]
+      return { "name": name, "key": x["key"] }
+    map(joinname, map(transform, MainData["nested"].keys()))
+    for (naname, values) in arrays.items():
+      smt2 += smtlib.declareMatrix(naname, len(values))
+      sizes = []
+      for i in range(0, len(values)):
+        key = values[i]
+        smt2 += smtlib.assignToArray(naname, i, key)
+        sizes.append(MainData["nested"][key])
+      smt2 += smtlib.declareArray(naname+"_sizes", len(sizes))
+      smt2 += smtlib.simpleFillArray(naname+"_sizes", sizes)
   MainData["blob"] = smt2
   return MainData
 
