@@ -1,5 +1,6 @@
-timeout=100
+timeout=60
 suggestions=1
 maxChanges=10
 apiOutput=
 experimental=1
+optimize=1
