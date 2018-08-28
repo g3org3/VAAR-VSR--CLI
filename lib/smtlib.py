@@ -3,6 +3,8 @@ def declareVariable(type, name):
     return "(declare-const " + name + " (Array Int Int))\n"
   if type == "HashMap":
     return "(declare-const " + name + " (Array String Int))\n"
+  if type == "Matrix":
+    return "(declare-const " + name + " (Array Int (Array Int Int)))\n"
   return "(declare-const " + name + " " + type + ")\n"
 
 def assignVariable(vid, name, value, index = None):
@@ -13,10 +15,35 @@ def assignVariable(vid, name, value, index = None):
   else:
     return "(assert (= "+name+" "+value+"))"+vid
 
-def declareArray(type, name, size):
-  output  = declareVariable(type, name)
+def comment(line):
+  return ";; " + line
+
+def commentTitle(line):
+  output = ""
+  output += ";;-----------------------------\n"
+  output += ";;  " + line + "\n"
+  output += ";;-----------------------------\n"
+  return output
+
+def declareArray(name, size):
+  output = ""
+  output += declareVariable("Array", name)
   output += declareVariable("Int", name + "_size")
   output += assignVariable(None, name + "_size", size)
+  return output
+
+def declareMatrix(name, size):
+  output = ""
+  output += declareVariable("Matrix", name)
+  output += declareVariable("Int", name + "_size")
+  output += assignVariable(None, name + "_size", size)
+  return output
+
+def simpleFillArray(arrayname, list):
+  output = ""
+  for i in range(0, len(list)):
+    val = list[i]
+    output += assignVariable(None, arrayname, val, i)
   return output
 
 def fillArray(toscaName, varid, values, array_name, getValue, isIgnored, saveValue):
