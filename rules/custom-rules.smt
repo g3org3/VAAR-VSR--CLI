@@ -2,7 +2,7 @@
 
 ;;for container in containers
 (and
-  (= (select container "replicas") 4)
+  (< (select container "replicas") 4)
   (= (select container "service_type") 'LoadBalancer')
 )
 ;;endfor
