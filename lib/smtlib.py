@@ -15,13 +15,15 @@ def assignVariable(vid, name, value, index = None):
   else:
     return "(assert (= "+name+" "+value+"))"+vid
 
-def comment(line):
-  return ";; " + line
+def comment(line, newline = ""):
+  return ";; " + line + newline
 
-def commentTitle(line):
+def commentTitle(title, subtitle = None):
   output = ""
   output += ";;-----------------------------\n"
-  output += ";;  " + line + "\n"
+  output += ";;  " + title + "\n"
+  if subtitle:
+    output += ";;  " + subtitle + "\n"
   output += ";;-----------------------------\n"
   return output
 
@@ -66,3 +68,12 @@ def assignToArray(arrayName, index, value):
 
 def assignToHashMap(arrayName, prop_name, value, varid = None):
   return assignVariable(varid, arrayName, value, "\""+prop_name+"\"")
+
+def declareArrayOfDictionaries(arrayname):
+  return "(declare-const " + arrayname + " (Array Int (Array String Int)))\n"
+
+def declareDictionary(arrayname):
+  return "(declare-const " + arrayname + " (Array String Int))\n"
+
+def commentDonePart(title):
+  return ";;------ Done " + title + " Setup ------\n\n"
