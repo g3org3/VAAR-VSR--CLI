@@ -9,8 +9,9 @@ import extras
 import md5
 from pyfancy import *
 from functools import reduce
+import preprocessor_types
 
-OUTPUT_PATH = './output/ouput.smt2'
+OUTPUT_PATH = './output/output.smt2'
 
 def getCPS(tosca):
   return extras.getCPS(tosca)
@@ -321,8 +322,10 @@ def getAttributesFromUserRules(rawRules):
 def sugarSyntaxGetProperty(line, arrayName):
   # (< vmi.mem_size 4599)
   # into => (< (select (select vnfs x) "version") 4599)
+  if (preprocessor_types.isTypeIP(line)):
+    return line
   try:
-    pattern = re.compile(r"\w+(\.\w+)+")
+    pattern = re.compile(r"([a-z]|[A-z]|_)+(\.([a-z]|[A-z]|_)+)+")
     start = pattern.search(line).start()
     end = pattern.search(line).end()
     att = line[start:end]
@@ -373,7 +376,8 @@ def prepareOutputForZ3(tosca, USER_RULES_PATH, config, ids = []):
     "rules": {
       "attributes": getAttributesFromUserRules(userRawRules)
     },
-    "customTypes": findCustomTypesInUserRules(userRawRules)
+    "customTypes": findCustomTypesInUserRules(userRawRules),
+    "nodes": {}
   }
 
   # add Custom Types
@@ -388,6 +392,7 @@ def prepareOutputForZ3(tosca, USER_RULES_PATH, config, ids = []):
   for key in MainData["types"].keys(): MainData["sizes"][key] = 0
 
   nodes = scanAllPropertiesAndGenerateStructure(tosca)
+  MainData["nodes"] = nodes
   prepareOutputForZ3Core(nodes, MainData)
   
   MainData["blob"] += parseUserRules(userRawRules, MainData)
@@ -510,11 +515,17 @@ def findSolution(tosca, MainData, comb, config, apiOutput):
                     values = values[:values.index(',\n')]
                   except:
                     values = values[:values.index(', else')]
+                  values = "".join(values.split('\n'))
                   rawValueFromSolver = values.split('" -> ')[1]
+                  rawValueFromSolver = rawValueFromSolver.split(',')[0]
                   prettyValue = rawValueFromSolver
                   fullnames = prettifyFullName(fullname)
+                  dataType = ""
                   try:
                     dataType = MainData["valueTypes"][fullname.split('.').pop()]
+                  except:
+                    dataType = ".".join(fullname.split('.')[2:])
+                  try:
                     prettyValue = prettifyValue(dataType, rawValueFromSolver, MainData)
                     suggestion['output'] += "\n    - " + " > ".join(fullnames) + ' to ' + "(" + prettyValue + ")"
                     suggestion['changes'].append({
@@ -609,7 +620,31 @@ def scanAllPropertiesAndGenerateStructure(tosca):
     # Attributes
     for (name, value) in get_attributes_objects(node).items():
       # print(node.name + "." + name + " = " + str(value))
-      _node['props'][prop.name] = value
+      _node['props'][name] = value
+
+    # print "Missing props/attributes/custom"
+    ignoreProps = ['type','capabilities', 'requirements', 'properties', 'attributes', 'description']
+    missingKeys = filter(lambda x: x not in ignoreProps, node.templates[node.name].keys())
+    def getval(obj, key = ""):
+      if type(obj) is not type({}):
+        return str(obj)
+      r = []
+      for (k, v) in obj.items():
+        if type(v) is not type({}):
+          val = key+"."+k+":"+str(v) if key != "" else k+":"+str(v)
+          r.append(val)
+        else:
+          kk = key + "." + k if key != "" else k
+          for i in getval(v, kk): r.append(i) 
+      return r
+    for key in missingKeys:
+      n = node.templates[node.name][key]
+      propsWithValues = getval(n, key)
+      if type(propsWithValues) is type(""): continue
+      for leaf in propsWithValues:
+        val = leaf.split(':')[1]
+        name = leaf.split(':')[0]
+        _node['props'][name] = val
 
     # Requirements
     for req in node.requirements:
@@ -652,29 +687,20 @@ def prepareOutputForZ3Core(nodes, MainData):
     Title = arrayName.upper()
     smt2 += "\n"
     if not nodes.has_key(nodetype):
-      smt2 += ";;------------------------\n"
-      smt2 += ";;  " + Title + " Setup: 0, None detected\n"
-      smt2 += ";;  " + nodetype + "\n"
-      smt2 += ";;------------------------\n"
+      smt2 += smtlib.commentTitle(Title + " Setup: 0, None detected", nodetype)
       continue
     
     # number of items of type {nodetype}
-    total = len(nodes.get(nodetype))
-    smt2 += ";;------------------------\n"
-    smt2 += ";;  " + Title + " Setup\n"
-    smt2 += ";;  " + nodetype + "\n"
-    smt2 += ";;------------------------\n"
-    smt2 += "(declare-const " + arrayName + " (Array Int (Array String Int)))\n"
-    for i in range(0, total):
-      smt2 += "(declare-const props_" + arrayLabel + "_" + str(i) + " (Array String Int))\n"
-    smt2 += "(declare-const " + arrayName + "_size Int)\n"
-    smt2 += "(assert (= " + arrayName + "_size " + str(total) +"))\n"
-    smt2 += ";;------ Done " + Title + " Setup ------\n\n"
+    total = compose(len, nodes.get)(nodetype)
+    smt2 += smtlib.commentTitle(Title+" Setup", nodetype)
+    smt2 += smtlib.declareArrayOfDictionaries(arrayName)
+    for i in range(0, total): smt2 += smtlib.declareDictionary("props_" + arrayLabel + "_" + str(i))
+    smt2 += smtlib.declareVariable("Int", arrayName+"_size")
+    smt2 += smtlib.assignVariable(None, arrayName + "_size ", total)
+    smt2 += smtlib.commentDonePart(Title)
 
 
-    smt2 += ";;------------------------\n"
-    smt2 += ";;  " + Title + " Insert Values From Conf\n"
-    smt2 += ";;------------------------\n"
+    smt2 += smtlib.commentTitle(Title + " Insert Values From Conf")
     
     items_counter = 0
     
@@ -682,8 +708,8 @@ def prepareOutputForZ3Core(nodes, MainData):
     for item in nodes.get(nodetype):  
       itemid = str(items_counter)
       name = item.get("name") if item.has_key("name") else "var_id_" + itemid
-      smt2 += ";; "+arrayLabel+"-name: " + name + "\n"
       item_name = "props_" + arrayLabel + "_" + str(itemid)
+      smt2 += smtlib.comment(arrayLabel+"-name: " + name, "\n")
 
       # for each property that the item has
       for (prop_name, prop_value) in item.get("props").items():
