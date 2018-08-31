@@ -35,9 +35,9 @@ def createSMTInput(values = []):
     userRules = file('./user.smt').read()
 
     blob = variables + configValues + initVariables + userRules
-    ouput = open('./output.smt2', mode="w")
-    ouput.write(blob)
-    ouput.close()
+    output = open('./output.smt2', mode="w")
+    output.write(blob)
+    output.close()
 
 def check(values = []):
     createSMTInput(values)
