@@ -56,6 +56,8 @@ def preProcessor(line, MainData):
     return preProcessIPs(line)
   elif preProcessString(line, MainData):
     return preProcessString(line, MainData)
+  # elif preProcessFloats(line, MainData):
+    # return preProcessString(line, MainData)
   return line
 
 def preProcessIPs(line):
@@ -122,3 +124,21 @@ def toscaRawValueToSMTCorrectType(attributeName, value, MainData):
     result = str(int(md5.new(value).hexdigest(), 16))
     MainData["stringsHashMap"][result] = value
     return result
+
+def isTypeIP(value):
+  value = value.strip()
+  parts = value.split('.')
+  if len(parts) is not 4:
+    return False
+  types = map(lambda x: type(x), parts)
+  typesDict = {}
+  for t in types:
+    typesDict.setdefault(t, [])
+    typesDict[t].append(t)
+  if len(typesDict.keys()) is not 1:
+    return False
+  if len(typesDict[typesDict.keys()[0]]) is not 4:
+    return False
+  if typesDict[typesDict.keys()[0]][0] is not type(1):
+    return False
+  return True
