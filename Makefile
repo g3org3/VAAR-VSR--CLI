@@ -1,5 +1,5 @@
 make:
-	docker build -f docker/Dockerfile -t registry.jorgeadolfo.com/epav:1.0.1 .
+	docker build -f docker/Dockerfile -t registry.jorgeadolfo.com/epav:1.1.0 .
 run:
 	./bin/run.sh example/tosca-conf.yml example/user.smt
 run-no-rules:
