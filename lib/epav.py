@@ -355,7 +355,7 @@ def prepareOutputForZ3(tosca, USER_RULES_PATH, config, ids = []):
       "fps": "tosca.nodes.nfv.FP",
       "vms": "tosca.nodes.Compute",
       "networks": "tosca.nodes.network.Network"
-    },# TODO: agregar aqui el nuevo type y size
+    },# ADD new array with your type here
     "sizes": {},
     # we generate this below
     # "sizes": {

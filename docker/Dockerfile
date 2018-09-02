@@ -27,6 +27,9 @@ RUN pip install -r requirements.txt
 # APP
 COPY . .
 
+RUN mkdir /custom_types
+COPY custom_types /custom_types
+
 COPY ./docker/entrypoint.sh /cli/entrypoint.sh
 RUN chmod +x /cli/entrypoint.sh
 ENTRYPOINT ["/cli/entrypoint.sh"]
