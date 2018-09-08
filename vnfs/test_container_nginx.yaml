@@ -4,13 +4,12 @@ description: >
   TOSCA simple profile with mysql docker container.
 
 imports:
-  - custom_types/k8s-container-type.yaml
+  - /cli/custom_types/k8s-container-type.yaml
 
 # Repositories to retrieve code artifacts from
 repositories:
   docker_hub: https://registry.hub.docker.com/
   # docker_hub: https://registry.jorgeadolfo.com
-
 
 topology_template:
   node_templates:
