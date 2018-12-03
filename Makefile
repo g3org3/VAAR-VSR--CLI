@@ -1,6 +1,6 @@
 REGISTRY='registry.jorgeadolfo.com'
 IMAGE='epav'
-VERSION='1.1.0'
+VERSION='latest'
 NAME=$(IMAGE)
 FULLNAME=$(REGISTRY)/$(IMAGE):$(VERSION)
 
