@@ -7,6 +7,7 @@ import json
 import smtlib
 import extras
 import md5
+import re
 from pyfancy import *
 from functools import reduce
 import preprocessor_types
@@ -133,15 +134,18 @@ def preProcessBytes(line):
     return False
 
 def toscaRawValueToSMTCorrectType(attributeName, value, MainData):
+## This whole function should be implemented with REs!!! 
+## Doing a quick and dirty bug fix for transforming 10MB into ten megabytes but not transforming LoadBalancer into Load Bytes...  
+
   # if is ip
   if len(str(value).split('.')) is 4:
     MainData["valueTypes"][attributeName] = "ip"
     return IP2Int(value)
   
   # if is memory size 100 GB
-  sizes = ["B", "KB", "MB", "GB", "TB", "PB"]
-  for k in sizes:
-    if k in str(value):
+  sizes = [re.compile("^\s*\d+\s*B\s*$"), re.compile("^\s*\d+\s*MB\s*$"), re.compile("^\s*\d+\s*GB\s*$"), re.compile("^\s*\d+\s*TB\s*$"), re.compile("^\s*\d+\s*PB\s*$")]
+  for sz in sizes:
+    if sz.match(str(value)):
       MainData["valueTypes"][attributeName] = "size"
       return bin2Dec(value)
 
